@@ -4,8 +4,6 @@
 # Uploads et résultats
 uploads/*
 !uploads/.gitkeep
-static/detections/*
-!static/detections/.gitkeep
 
 # Python
 __pycache__/

@@ -1,19 +1,19 @@
 """
-Migration — crée les collections normalisées "maladies" et "recommandations"
-à partir des données jusqu'ici fusionnées dans CLASS_INFO / UNIVERSAL_DISEASE_INFO
-(model_logic.py).
+Seed — peuple la collection MongoDB "recommandations" à partir du catalogue
+PlantVillage (disease_catalog.CLASS_INFO). La maladie est un champ de chaque
+document "recommandations" (pas de collection "maladies" séparée).
 
-Modèle cible :
-  maladies       : { codeLabel, nom, traitement, recommandationId }
-  recommandations: { texte, produitsConseilles: [...] }
+Modèle :
+  recommandations : { codeLabel, plante, maladie, niveau, description,
+                       traitement, conseil, produitsConseilles: [...] }
 
 Idempotent : peut être relancé sans dupliquer (upsert sur codeLabel).
 Les entrées "healthy" (pas de maladie) sont ignorées — une Analyse d'une
-plante saine n'a simplement pas de maladieId.
+plante saine n'a simplement pas de recommandationId.
 
 Usage :
   cd backend
-  python migrate_maladies.py
+  python seed_recommandations.py
 """
 
 import os
@@ -26,7 +26,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
-from model_logic import CLASS_INFO, UNIVERSAL_DISEASE_INFO
+from disease_catalog import CLASS_INFO
 
 load_dotenv()
 
@@ -45,35 +45,30 @@ def main():
     client = MongoClient(uri, serverSelectionTimeoutMS=5000)
     client.server_info()
     db = client['plantai']
-    maladies_col = db['maladies']
-    recos_col    = db['recommandations']
-    maladies_col.create_index('codeLabel', unique=True)
+    col = db['recommandations']
+    col.create_index('codeLabel', unique=True)
 
-    sources = list(CLASS_INFO.items()) + list(UNIVERSAL_DISEASE_INFO.items())
     created = updated = skipped = 0
 
-    for code_label, info in sources:
+    for code_label, info in CLASS_INFO.items():
         if not info.get('maladie'):
             skipped += 1  # entrée "saine", pas une maladie
             continue
 
-        nom        = info['maladie']
         traitement = info.get('traitement') or ''
-        texte      = info.get('conseil') or ''
         produits   = _extract_produits(traitement)
 
-        reco_result = recos_col.find_one_and_update(
-            {'codeLabelSource': code_label},
-            {'$set': {'texte': texte, 'produitsConseilles': produits, 'codeLabelSource': code_label}},
-            upsert=True, return_document=True,
-        )
-
-        existing = maladies_col.find_one({'codeLabel': code_label})
-        maladies_col.update_one(
+        existing = col.find_one({'codeLabel': code_label})
+        col.update_one(
             {'codeLabel': code_label},
             {'$set': {
-                'nom': nom, 'traitement': traitement,
-                'recommandationId': reco_result['_id'],
+                'plante':             info.get('plante'),
+                'maladie':            info['maladie'],
+                'niveau':             info.get('niveau'),
+                'description':        info.get('description'),
+                'traitement':         traitement,
+                'conseil':            info.get('conseil'),
+                'produitsConseilles': produits,
             }},
             upsert=True,
         )
@@ -82,8 +77,8 @@ def main():
         else:
             created += 1
 
-    print(f"Maladies créées : {created} | mises à jour : {updated} | ignorées (saines) : {skipped}")
-    print(f"Total en base — maladies : {maladies_col.count_documents({})} | recommandations : {recos_col.count_documents({})}")
+    print(f"Recommandations créées : {created} | mises à jour : {updated} | ignorées (saines) : {skipped}")
+    print(f"Total en base — recommandations : {col.count_documents({})}")
 
 
 if __name__ == '__main__':

@@ -1,19 +1,22 @@
 """
-Authentification — hash des mots de passe (bcrypt) + JWT + décorateurs de rôle.
+Authentification — hash des mots de passe (bcrypt) + JWT + dépendances de rôle FastAPI.
 Modèle : Utilisateur (idUtilisateur, nom, prenom, email, motDePasse, role)
          role ∈ {"administrateur", "maraicher"}
 """
 
 import os
-import jwt
-import bcrypt
 from datetime import datetime, timedelta, timezone
-from functools import wraps
-from flask import request, jsonify, g
 
-JWT_SECRET     = os.getenv('JWT_SECRET', 'dev-secret-a-changer-en-production')
-JWT_ALGORITHM  = 'HS256'
-JWT_EXPIRES_H  = 24
+import bcrypt
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+JWT_SECRET    = os.getenv('JWT_SECRET', 'dev-secret-a-changer-en-production')
+JWT_ALGORITHM = 'HS256'
+JWT_EXPIRES_H = 24
+
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def hash_password(plain_password: str) -> str:
@@ -47,44 +50,22 @@ def decode_token(token: str):
         return None
 
 
-def _extract_token():
-    header = request.headers.get('Authorization', '')
-    if header.startswith('Bearer '):
-        return header[7:].strip()
-    return None
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+) -> dict:
+    """Dépendance FastAPI : exige un token JWT valide. Lève 401 sinon."""
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentification requise')
+    payload = decode_token(credentials.credentials)
+    if payload is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Token invalide ou expiré')
+    return payload
 
 
-def get_current_user():
-    """Décode le token si présent, sans lever d'erreur. Utilisé pour l'auth optionnelle."""
-    token = _extract_token()
-    if not token:
-        return None
-    return decode_token(token)
-
-
-def login_required(f):
-    """Exige un token JWT valide. Injecte l'utilisateur décodé dans flask.g.current_user."""
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        token = _extract_token()
-        if not token:
-            return jsonify({'error': 'Authentification requise'}), 401
-        payload = decode_token(token)
-        if payload is None:
-            return jsonify({'error': 'Token invalide ou expiré'}), 401
-        g.current_user = payload
-        return f(*args, **kwargs)
-    return wrapper
-
-
-def role_required(*roles):
-    """Exige un token JWT valide ET un rôle parmi ceux fournis."""
-    def decorator(f):
-        @wraps(f)
-        @login_required
-        def wrapper(*args, **kwargs):
-            if g.current_user.get('role') not in roles:
-                return jsonify({'error': 'Accès refusé — rôle insuffisant'}), 403
-            return f(*args, **kwargs)
-        return wrapper
-    return decorator
+def require_role(*roles):
+    """Fabrique une dépendance FastAPI exigeant un token valide ET un rôle parmi ceux fournis."""
+    def dependency(current_user: dict = Depends(get_current_user)) -> dict:
+        if current_user.get('role') not in roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Accès refusé — rôle insuffisant')
+        return current_user
+    return dependency

@@ -8,7 +8,7 @@
   - [x] Utiliser secure_filename
   - [x] Ajouter try/except
   - [x] Nettoyer fichiers après traitement
-- [x] Sécuriser `model_logic.py`
+- [x] Sécuriser `ia/model.py` (CNN Keras)
   - [x] Vérifier existence modèle au démarrage
   - [x] Gérer erreurs inférence
   - [x] Vérifier présence détections avant accès

@@ -1,0 +1,7 @@
+# Dataset et modèle entraîné (générés localement, jamais committés)
+data/
+model/
+
+# Python
+__pycache__/
+*.py[cod]

@@ -1,20 +1,35 @@
 services:
   detection-api:
-    build: .
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     container_name: detection-backend
     ports:
       - "5000:5000"
     environment:
       PORT: 5000
-      FLASK_DEBUG: "False"
-      MODEL_PATH: /app/model/modele_plantes.pt
+      MONGODB_URI: mongodb://mongo:27017/plantai
+      CNN_MODEL_PATH: /ia/model/plant_disease_model.keras
     volumes:
-      - ./model:/app/model:ro
+      - ../ia/model:/ia/model:ro
       - ./uploads:/app/uploads
-      - ./static/detections:/app/static/detections
+    depends_on:
+      - mongo
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  mongo:
+    image: mongo:6
+    container_name: plantai-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo_data:

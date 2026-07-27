@@ -35,7 +35,7 @@ def main():
     uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/plantai')
     client = MongoClient(uri, serverSelectionTimeoutMS=5000)
     client.server_info()
-    users = client['plantai']['users']
+    users = client['plantai']['utilisateurs']
     users.create_index('email', unique=True)
 
     if users.find_one({'email': email}):

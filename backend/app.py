@@ -1,44 +1,47 @@
-from flask import Flask, request, jsonify, Response, g
-from flask_cors import CORS
+"""
+PlantAI Backend — FastAPI
+Pipeline IA unique : CNN Keras (ia/model.py, voir ia/train_model.py pour l'entraînement).
+MongoDB — 4 collections : utilisateurs, analyses, capteurs, recommandations.
+"""
+
 import os
 import sys
+import tempfile
 import uuid
+from datetime import datetime, timedelta, timezone
+
 import requests as http_requests
+from bson import ObjectId
+from bson.errors import InvalidId
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
+
+from auth import generate_token, get_current_user, hash_password, require_role, verify_password
+from database import (
+    get_analyses_col, get_capteurs_col, get_db, get_recommandations_col, get_utilisateurs_col, serialize,
+)
+from disease_catalog import CLASS_INFO
+from schemas import ESP32CaptureRequest, LoginRequest, SensorData, UserCreate, UserUpdate
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
-import tempfile
-from werkzeug.utils import secure_filename
-from model_logic import run_inference
-from dotenv import load_dotenv
-from datetime import datetime, timezone, timedelta
-
-from auth import (
-    login_required, role_required,
-    hash_password, verify_password, generate_token,
-)
 
 load_dotenv()
 
-app = Flask(__name__)
-CORS(app, resources={
-    r"/api/*":      {"origins": "*"},
-    r"/auth/*":     {"origins": "*"},
-    r"/history":    {"origins": "*"},
-    r"/users":      {"origins": "*"},
-    r"/users/*":    {"origins": "*"},
-    r"/sensors/*":  {"origins": "*"},
-    r"/maladies":   {"origins": "*"},
-    r"/maladies/*": {"origins": "*"},
-    r"/images/*":   {"origins": "*"},
-})
+app = FastAPI(title="PlantAI Backend", description="Détection des maladies des plantes — CNN Keras")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── Configuration uploads ──────────────────────────────────────────────────────
-UPLOAD_FOLDER       = 'uploads/'
-ALLOWED_EXTENSIONS  = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-MAX_CONTENT_LENGTH  = 16 * 1024 * 1024   # 16 Mo
-
-app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+UPLOAD_FOLDER      = 'uploads/'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+MAX_CONTENT_LENGTH = 16 * 1024 * 1024   # 16 Mo
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ── Configuration ESP32 ────────────────────────────────────────────────────────
@@ -46,186 +49,78 @@ ESP32_DEFAULT_IP      = os.getenv('ESP32_IP', '')
 ESP32_CONNECT_TIMEOUT = 8
 ESP32_CAPTURE_TIMEOUT = 8
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ── MONGODB ───────────────────────────────────────────────────────────────────
-# ══════════════════════════════════════════════════════════════════════════════
-_mongo_col = None
-
-def get_history_col():
-    """Retourne la collection MongoDB (lazy init, graceful fallback)."""
-    global _mongo_col
-    if _mongo_col is not None:
-        return _mongo_col
-    try:
-        from pymongo import MongoClient, DESCENDING
-        uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/plantai')
-        client = MongoClient(uri, serverSelectionTimeoutMS=3000)
-        client.server_info()          # lève une exception si MongoDB est absent
-        db  = client['plantai']
-        col = db['predictions']
-        col.create_index([('date', DESCENDING)])
-        _mongo_col = col
-        print("✅  MongoDB connecté →", uri)
-    except Exception as e:
-        print(f"⚠️   MongoDB non disponible : {e} — l'historique restera en mémoire côté client")
-        _mongo_col = None
-    return _mongo_col
+SENSOR_LINK_WINDOW_SECONDS = 120
 
 
-def _save_prediction(entry: dict):
-    """Insère un enregistrement dans MongoDB. Silencieux si DB indisponible."""
-    col = get_history_col()
-    if col is None:
-        return None
-    try:
-        result = col.insert_one(entry)
-        return str(result.inserted_id)
-    except Exception as e:
-        print(f"⚠️  Erreur sauvegarde MongoDB : {e}")
-        return None
-
-
-def _serialize(doc: dict) -> dict:
-    """Convertit ObjectId → str et datetime → ISO string pour jsonify."""
-    from bson import ObjectId
-    out = {}
-    for k, v in doc.items():
-        if isinstance(v, ObjectId):
-            out[k] = str(v)
-        elif isinstance(v, datetime):
-            out[k] = v.isoformat()
-        elif isinstance(v, list):
-            out[k] = [_serialize(i) if isinstance(i, dict) else i for i in v]
-        elif isinstance(v, dict):
-            out[k] = _serialize(v)
-        else:
-            out[k] = v
-    return out
-
-
-def allowed_file(filename):
+def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ── MONGODB : COLLECTIONS UTILISATEURS & CAPTEURS ─────────────────────────────
-# ══════════════════════════════════════════════════════════════════════════════
-_users_col          = None
-_sensors_col        = None
-_maladies_col       = None
-_recommandations_col = None
-_images_col         = None
+def _predict_cnn(img_path: str) -> dict:
+    """Import paresseux du CNN Keras (ia/model.py) : ne bloque pas le démarrage
+    de l'API si TensorFlow / le modèle entraîné ne sont pas encore disponibles."""
+    ia_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ia')
+    if ia_dir not in sys.path:
+        sys.path.insert(0, ia_dir)
+    from model import predict_image
+    return predict_image(img_path)
 
 
-def get_users_col():
-    """Retourne la collection MongoDB 'users' (lazy init, index unique sur email)."""
-    global _users_col
-    if _users_col is not None:
-        return _users_col
-    col = get_history_col()  # déclenche l'init de _mongo_col / vérifie la connexion
-    if col is None:
-        return None
-    db = col.database
-    _users_col = db['users']
-    _users_col.create_index('email', unique=True)
-    return _users_col
+def _enrich_prediction(raw: dict) -> dict:
+    """Ajoute les infos du catalogue (plante, niveau, traitement…) à la sortie brute du CNN."""
+    label = raw.get('maladie')
+    info = CLASS_INFO.get(label)
+    if info is None:
+        disease_info = {
+            'plante':      'Inconnue',
+            'maladie':     label or 'Inconnue',
+            'niveau':      'unknown',
+            'description': f"Détection : {label}" if label else "Aucune détection.",
+            'traitement':  'Non applicable.',
+            'conseil':     'Résultat non référencé dans le catalogue PlantVillage.',
+        }
+    else:
+        disease_info = dict(info)
+    return {
+        'maladie':     label,
+        'confiance':   raw.get('confiance'),
+        'diseaseInfo': disease_info,
+    }
 
 
-def get_sensors_col():
-    """Retourne la collection MongoDB 'sensors_data' (lazy init)."""
-    global _sensors_col
-    if _sensors_col is not None:
-        return _sensors_col
-    col = get_history_col()
-    if col is None:
-        return None
-    db = col.database
-    _sensors_col = db['sensors_data']
-    _sensors_col.create_index([('dateMesure', -1)])
-    return _sensors_col
-
-
-def get_maladies_col():
-    """Retourne la collection MongoDB 'maladies' (lazy init)."""
-    global _maladies_col
-    if _maladies_col is not None:
-        return _maladies_col
-    col = get_history_col()
-    if col is None:
-        return None
-    _maladies_col = col.database['maladies']
-    return _maladies_col
-
-
-def get_recommandations_col():
-    """Retourne la collection MongoDB 'recommandations' (lazy init)."""
-    global _recommandations_col
-    if _recommandations_col is not None:
-        return _recommandations_col
-    col = get_history_col()
-    if col is None:
-        return None
-    _recommandations_col = col.database['recommandations']
-    return _recommandations_col
-
-
-def get_images_col():
-    """Retourne la collection MongoDB 'images' (lazy init)."""
-    global _images_col
-    if _images_col is not None:
-        return _images_col
-    col = get_history_col()
-    if col is None:
-        return None
-    _images_col = col.database['images']
-    return _images_col
-
-
-def _persist_image(tmp_path: str, nom_image: str):
-    """Rend l'image permanente (nom de fichier unique, plus de suppression après
-    analyse) et l'enregistre dans la collection 'images'.
-    Retourne (idImage ou None si DB indisponible, chemin absolu permanent)."""
+def _persist_image_file(tmp_path: str, nom_image: str) -> tuple[dict, str]:
+    """Rend l'image permanente (nom unique) et retourne le sous-document image
+    à embarquer directement dans le document 'analyses'."""
     ext = os.path.splitext(tmp_path)[1] or os.path.splitext(nom_image)[1] or '.jpg'
     unique_name    = f"{uuid.uuid4().hex}{ext}"
     permanent_path = os.path.join(UPLOAD_FOLDER, unique_name)
     os.replace(tmp_path, permanent_path)
-
-    col = get_images_col()
-    if col is None:
-        return None, permanent_path
-    doc = {
+    image_doc = {
         'nomImage':    nom_image,
         'cheminImage': unique_name,
         'dateCapture': datetime.now(timezone.utc),
     }
-    result = col.insert_one(doc)
-    return str(result.inserted_id), permanent_path
+    return image_doc, permanent_path
 
 
-def _link_maladie(entry: dict, result: dict):
-    """Rattache l'Analyse à la Maladie correspondante (si trouvée) via son codeLabel.
-    N'échoue jamais — une plante saine ou un code non référencé n'a simplement pas de maladieId."""
-    col = get_maladies_col()
+def _link_recommandation(entry: dict, result: dict):
+    """Rattache l'Analyse à la Recommandation correspondante via codeLabel.
+    N'échoue jamais — une plante saine ou un code non référencé n'a simplement pas de recommandationId."""
+    col = get_recommandations_col()
     if col is None:
         return
-    code_label = result.get('label') or result.get('maladie')
+    code_label = result.get('maladie')
     if not code_label:
         return
-    maladie = col.find_one({'codeLabel': code_label})
-    if maladie:
-        entry['maladieId'] = str(maladie['_id'])
-        if maladie.get('recommandationId'):
-            entry['recommandationId'] = str(maladie['recommandationId'])
+    reco = col.find_one({'codeLabel': code_label})
+    if reco:
+        entry['recommandationId'] = str(reco['_id'])
 
 
-SENSOR_LINK_WINDOW_SECONDS = 120
-
-
-def _link_recent_sensor_data(analyse_id: str):
-    """Rattache à cette Analyse les DonneesCapteur reçues récemment et pas encore
-    liées à une analyse — 'données capteur disponibles au même moment' (Analyse
-    associée à 0..* Capteur). N'échoue jamais si aucune donnée récente n'existe."""
-    col = get_sensors_col()
+def _link_recent_capteurs(analyse_id: str):
+    """Rattache à cette Analyse les données 'capteurs' reçues récemment et pas
+    encore liées à une analyse. N'échoue jamais si aucune donnée récente n'existe."""
+    col = get_capteurs_col()
     if col is None:
         return
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=SENSOR_LINK_WINDOW_SECONDS)
@@ -235,19 +130,30 @@ def _link_recent_sensor_data(analyse_id: str):
     )
 
 
-def _maladie_to_dict(doc: dict, recommandation: dict = None) -> dict:
-    out = {
-        'idmaladie':  str(doc['_id']),
-        'nom':        doc.get('nom'),
-        'traitement': doc.get('traitement'),
+def _save_analysis(entry: dict):
+    col = get_analyses_col()
+    if col is None:
+        return None
+    try:
+        result = col.insert_one(entry)
+        return str(result.inserted_id)
+    except Exception as e:
+        print(f"⚠️  Erreur sauvegarde 'analyses' : {e}")
+        return None
+
+
+def _recommandation_to_dict(doc: dict) -> dict:
+    return {
+        'idRecommandation':   str(doc['_id']),
+        'codeLabel':          doc.get('codeLabel'),
+        'plante':             doc.get('plante'),
+        'maladie':            doc.get('maladie'),
+        'niveau':             doc.get('niveau'),
+        'description':        doc.get('description'),
+        'traitement':         doc.get('traitement'),
+        'texte':              doc.get('conseil'),
+        'produitsConseilles': doc.get('produitsConseilles', []),
     }
-    if recommandation:
-        out['recommandation'] = {
-            'idrecommandation':   str(recommandation['_id']),
-            'texte':              recommandation.get('texte'),
-            'produitsConseilles': recommandation.get('produitsConseilles', []),
-        }
-    return out
 
 
 def _user_to_dict(doc: dict) -> dict:
@@ -264,60 +170,66 @@ def _user_to_dict(doc: dict) -> dict:
     return out
 
 
+def _object_id(raw_id: str) -> ObjectId:
+    try:
+        return ObjectId(raw_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=400, detail='Identifiant invalide')
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ── ROUTE ACCUEIL ─────────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/')
+@app.get('/')
 def home():
-    return jsonify({
+    return {
         'status':    'ok',
         'message':   'PlantAI Backend opérationnel',
         'endpoints': {
-            '/auth/login':          'POST  — Connexion (email + motDePasse) → token + rôle',
-            '/auth/logout':         'POST  — Déconnexion (authentifié)',
-            '/api/predict':         'POST  — Analyser une image (fichier)',
-            '/api/predict/cnn':     'POST  — Analyser une image via le CNN Keras (ia/model.py)',
-            '/api/esp32/status':    'GET   — Vérifier la connexion ESP32-CAM',
-            '/api/esp32/capture':   'POST  — Capturer depuis ESP32-CAM et analyser',
-            '/api/esp32/stream_url':'GET   — URL du flux MJPEG ESP32',
-            '/api/history':         'GET/POST/DELETE — Historique des analyses (legacy, non authentifié)',
-            '/history':             'GET   — Historique de l\'utilisateur connecté (authentifié)',
-            '/users':               'GET/POST — Gestion des utilisateurs (administrateur)',
-            '/users/<id>':          'PUT/DELETE — Modifier/supprimer un utilisateur (administrateur)',
-            '/sensors/data':        'GET/POST — Données capteurs (température/humidité)',
+            '/auth/login':           'POST  — Connexion (email + motDePasse) → token + rôle',
+            '/auth/logout':          'POST  — Déconnexion (authentifié)',
+            '/api/predict':          'POST  — Analyser une image (CNN Keras, seul pipeline IA)',
+            '/api/esp32/status':     'GET   — Vérifier la connexion ESP32-CAM',
+            '/api/esp32/capture':    'POST  — Capturer depuis ESP32-CAM et analyser',
+            '/api/esp32/stream':     'GET   — Proxy du flux MJPEG ESP32',
+            '/api/history':          'GET/POST/DELETE — Historique des analyses (legacy, non authentifié)',
+            '/history':              "GET   — Historique de l'utilisateur connecté (authentifié)",
+            '/users':                'GET/POST — Gestion des utilisateurs (administrateur)',
+            '/users/{id}':           'PUT/DELETE — Modifier/supprimer un utilisateur (administrateur)',
+            '/sensors/data':         'GET/POST — Données capteurs (température/humidité)',
             '/sensors/data/simulate':'POST — Simule l\'envoi de données capteur (test)',
-            '/maladies':            'GET — Catalogue des maladies référencées',
-            '/maladies/<id>':       'GET — Détail d\'une maladie + sa recommandation',
-            '/health':              'GET   — Santé du service',
+            '/recommandations':      'GET — Catalogue maladie + recommandation',
+            '/recommandations/{id}': 'GET — Détail d\'une recommandation',
+            '/images/{id}':          "GET — Image d'une analyse",
+            '/health':               'GET   — Santé du service',
         },
-    })
+    }
 
 
-@app.route('/health')
+@app.get('/health')
 def health():
-    db_ok = get_history_col() is not None
-    return jsonify({'status': 'healthy', 'mongodb': 'connected' if db_ok else 'unavailable'}), 200
+    db_ok = get_db() is not None
+    return {'status': 'healthy', 'mongodb': 'connected' if db_ok else 'unavailable'}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ── AUTHENTIFICATION (diagramme de séquence "Connexion") ─────────────────────
+# ── AUTHENTIFICATION ──────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/auth/login', methods=['POST'])
-def login():
-    data = request.get_json(silent=True) or {}
-    email        = (data.get('email') or '').strip().lower()
-    mot_de_passe = data.get('motDePasse') or data.get('password') or ''
+@app.post('/auth/login')
+def login(payload: LoginRequest):
+    email        = payload.email.strip().lower()
+    mot_de_passe = payload.motDePasse
 
     if not email or not mot_de_passe:
-        return jsonify({'error': 'Email et mot de passe requis'}), 400
+        raise HTTPException(status_code=400, detail='Email et mot de passe requis')
 
-    col = get_users_col()
+    col = get_utilisateurs_col()
     if col is None:
-        return jsonify({'error': 'Base de données indisponible'}), 503
+        raise HTTPException(status_code=503, detail='Base de données indisponible')
 
     user = col.find_one({'email': email})
     if user is None or not verify_password(mot_de_passe, user['motDePasse']):
-        return jsonify({'error': 'Identifiants invalides'}), 401
+        raise HTTPException(status_code=401, detail='Identifiants invalides')
 
     user_out = _user_to_dict(user)
     token = generate_token({
@@ -325,478 +237,348 @@ def login():
         'email':         user_out['email'],
         'role':          user_out['role'],
     })
+    return {'token': token, **user_out}
 
-    return jsonify({'token': token, **user_out})
 
-
-@app.route('/auth/logout', methods=['POST'])
-@login_required
-def logout():
+@app.post('/auth/logout')
+def logout(current_user: dict = Depends(get_current_user)):
     # JWT stateless : la déconnexion est gérée côté client (suppression du token).
-    return jsonify({'ok': True, 'message': 'Déconnecté'})
+    return {'ok': True, 'message': 'Déconnecté'}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ── PRÉDICTION SUR IMAGE UPLOADÉE ─────────────────────────────────────────────
+# ── PRÉDICTION SUR IMAGE UPLOADÉE (CNN Keras — pipeline unique) ──────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/api/predict', methods=['POST'])
-@role_required('maraicher')
-def predict():
-    img_path = None
+@app.post('/api/predict')
+def predict(
+    image: UploadFile = File(...),
+    current_user: dict = Depends(require_role('maraicher')),
+):
+    if image.filename == '':
+        raise HTTPException(status_code=400, detail='Nom de fichier vide')
+    if not allowed_file(image.filename):
+        raise HTTPException(status_code=400, detail='Format non autorisé. Acceptés : png, jpg, jpeg, gif, webp')
+
+    contents = image.file.read()
+    if len(contents) > MAX_CONTENT_LENGTH:
+        raise HTTPException(status_code=413, detail='Fichier trop volumineux. Maximum : 16 Mo')
+
+    filename = os.path.basename(image.filename)
+    tmp_path = os.path.join(UPLOAD_FOLDER, f"tmp_{uuid.uuid4().hex}_{filename}")
+    with open(tmp_path, 'wb') as f:
+        f.write(contents)
+
     try:
-        if 'image' not in request.files:
-            return jsonify({'error': 'Aucune image fournie'}), 400
-
-        file = request.files['image']
-        if file.filename == '':
-            return jsonify({'error': 'Nom de fichier vide'}), 400
-        if not allowed_file(file.filename):
-            return jsonify({'error': 'Format non autorisé. Acceptés : png, jpg, jpeg, gif, webp'}), 400
-
-        filename = secure_filename(file.filename)
-        img_path = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(img_path)
-
-        image_id, img_path = _persist_image(img_path, filename)
-
-        result = run_inference(img_path)
-
-        # ── Auto-sauvegarde MongoDB ──────────────────────────────────────────
-        entry = {
-            **result,
-            'image':   filename,
-            'source':  'api',
-            'date':    datetime.now(timezone.utc),
-            'userId':  g.current_user['idUtilisateur'],
-        }
-        if image_id:
-            entry['imageId'] = image_id
-        _link_maladie(entry, result)
-        db_id = _save_prediction(entry)
-        if db_id:
-            result['dbId'] = db_id
-            _link_recent_sensor_data(db_id)
-        if image_id:
-            result['imageId'] = image_id
-
-        return jsonify(result)
-
+        image_doc, img_path = _persist_image_file(tmp_path, filename)
+        raw = _predict_cnn(img_path)
+        result = _enrich_prediction(raw)
+    except ModuleNotFoundError:
+        raise HTTPException(status_code=503, detail="Modèle CNN indisponible — installez requirements.txt (tensorflow)")
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         print(f"Erreur prédiction : {e}")
-        return jsonify({'error': "Erreur interne lors du traitement de l'image"}), 500
+        raise HTTPException(status_code=500, detail="Erreur interne lors du traitement de l'image")
 
+    entry = {
+        **result,
+        'image':   image_doc,
+        'source':  'api',
+        'date':    datetime.now(timezone.utc),
+        'userId':  current_user['idUtilisateur'],
+    }
+    _link_recommandation(entry, result)
+    db_id = _save_analysis(entry)
+    if db_id:
+        result['idAnalyse'] = db_id
+        _link_recent_capteurs(db_id)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ── PRÉDICTION VIA LE CNN KERAS (ia/model.py) ─────────────────────────────────
-# ══════════════════════════════════════════════════════════════════════════════
-def _predict_cnn(img_path):
-    """Import paresseux du modèle Keras : ne bloque pas le démarrage de Flask
-    si TensorFlow n'est pas installé dans l'environnement backend."""
-    ia_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ia')
-    if ia_dir not in sys.path:
-        sys.path.insert(0, ia_dir)
-    from model import predict_image
-    return predict_image(img_path)
-
-
-@app.route('/api/predict/cnn', methods=['POST'])
-@role_required('maraicher')
-def predict_cnn():
-    img_path = None
-    try:
-        if 'image' not in request.files:
-            return jsonify({'error': 'Aucune image fournie'}), 400
-
-        file = request.files['image']
-        if file.filename == '':
-            return jsonify({'error': 'Nom de fichier vide'}), 400
-        if not allowed_file(file.filename):
-            return jsonify({'error': 'Format non autorisé. Acceptés : png, jpg, jpeg, gif, webp'}), 400
-
-        filename = secure_filename(file.filename)
-        img_path = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(img_path)
-
-        image_id, img_path = _persist_image(img_path, filename)
-
-        result = _predict_cnn(img_path)
-
-        # ── Auto-sauvegarde MongoDB ──────────────────────────────────────────
-        entry = {
-            **result,
-            'image':   filename,
-            'source':  'cnn_keras',
-            'date':    datetime.now(timezone.utc),
-            'userId':  g.current_user['idUtilisateur'],
-        }
-        if image_id:
-            entry['imageId'] = image_id
-        _link_maladie(entry, result)
-        db_id = _save_prediction(entry)
-        if db_id:
-            result['dbId'] = db_id
-            _link_recent_sensor_data(db_id)
-        if image_id:
-            result['imageId'] = image_id
-
-        return jsonify(result)
-
-    except ModuleNotFoundError:
-        return jsonify({'error': "Modèle CNN indisponible — installez ia/requirements.txt (tensorflow)"}), 503
-    except FileNotFoundError as e:
-        return jsonify({'error': str(e)}), 503
-    except Exception as e:
-        print(f"Erreur prédiction CNN : {e}")
-        return jsonify({'error': "Erreur interne lors du traitement de l'image"}), 500
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ── ESP32-CAM : STATUT DE CONNEXION ───────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/api/esp32/status', methods=['GET'])
-def esp32_status():
-    ip = request.args.get('ip', ESP32_DEFAULT_IP).strip()
+@app.get('/api/esp32/status')
+def esp32_status(ip: str = Query(default=None)):
+    ip = (ip or ESP32_DEFAULT_IP).strip()
 
     if not ip:
-        return jsonify({
-            'connected': False,
-            'ip':        None,
-            'message':   'Adresse IP ESP32 non configurée',
-        })
+        return {'connected': False, 'ip': None, 'message': 'Adresse IP ESP32 non configurée'}
 
     capture_url = f'http://{ip}/capture'
     try:
         r = http_requests.get(capture_url, timeout=ESP32_CONNECT_TIMEOUT, stream=True)
         r.close()
         connected = r.status_code == 200
-        return jsonify({
+        return {
             'connected':   connected,
             'ip':          ip,
             'stream_url':  f'http://{ip}:81/stream',
             'capture_url': capture_url,
             'message':     'ESP32-CAM connectée et opérationnelle' if connected else f'HTTP {r.status_code}',
-        })
-
+        }
     except http_requests.exceptions.ConnectTimeout:
-        return jsonify({'connected': False, 'ip': ip, 'message': 'Hôte injoignable (timeout)'})
+        return {'connected': False, 'ip': ip, 'message': 'Hôte injoignable (timeout)'}
     except http_requests.exceptions.ConnectionError:
-        return jsonify({'connected': False, 'ip': ip, 'message': "Connexion refusée — vérifiez l'IP et le WiFi"})
+        return {'connected': False, 'ip': ip, 'message': "Connexion refusée — vérifiez l'IP et le WiFi"}
     except Exception as e:
-        return jsonify({'connected': False, 'ip': ip, 'message': str(e)})
+        return {'connected': False, 'ip': ip, 'message': str(e)}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ── ESP32 : DONNÉES CAPTEURS IoT (DHT11 temp/humidité) ────────────────────────
+# ── ESP32 : DONNÉES CAPTEURS IoT (DHT11 + humidité sol) ───────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/api/esp32/sensors', methods=['GET'])
-def esp32_sensors():
-    ip = request.args.get('ip', ESP32_DEFAULT_IP).strip()
+@app.get('/api/esp32/sensors')
+def esp32_sensors(ip: str = Query(default=None)):
+    ip = (ip or ESP32_DEFAULT_IP).strip()
     if not ip:
-        return jsonify({'ok': False, 'error': 'Adresse IP ESP32 non fournie'}), 400
+        raise HTTPException(status_code=400, detail='Adresse IP ESP32 non fournie')
     try:
         r = http_requests.get(f'http://{ip}/sensors', timeout=5)
         r.raise_for_status()
-        data = r.json()
-        return jsonify(data)
+        return r.json()
     except http_requests.exceptions.ConnectTimeout:
-        return jsonify({'ok': False, 'error': 'Timeout — ESP32 injoignable'}), 504
+        raise HTTPException(status_code=504, detail='Timeout — ESP32 injoignable')
     except http_requests.exceptions.ConnectionError:
-        return jsonify({'ok': False, 'error': 'Connexion refusée'}), 503
+        raise HTTPException(status_code=503, detail='Connexion refusée')
     except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ── ESP32-CAM : CAPTURER ET ANALYSER ──────────────────────────────────════════
+# ── ESP32-CAM : CAPTURER ET ANALYSER ──────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/api/esp32/capture', methods=['POST'])
-@role_required('maraicher')
-def esp32_capture():
-    data = request.get_json(silent=True) or {}
-    ip   = data.get('ip', ESP32_DEFAULT_IP).strip()
-
+@app.post('/api/esp32/capture')
+def esp32_capture(
+    payload: ESP32CaptureRequest = ESP32CaptureRequest(),
+    current_user: dict = Depends(require_role('maraicher')),
+):
+    ip = (payload.ip or ESP32_DEFAULT_IP).strip()
     if not ip:
-        return jsonify({'error': 'Adresse IP ESP32 non fournie'}), 400
+        raise HTTPException(status_code=400, detail='Adresse IP ESP32 non fournie')
 
     capture_url = f'http://{ip}/capture'
-    tmp_path    = None
-
     try:
         r = http_requests.get(capture_url, timeout=ESP32_CAPTURE_TIMEOUT)
         r.raise_for_status()
-
         if 'image' not in r.headers.get('Content-Type', ''):
-            return jsonify({'error': "L'ESP32 n'a pas renvoyé une image valide"}), 502
+            raise HTTPException(status_code=502, detail="L'ESP32 n'a pas renvoyé une image valide")
 
         with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False, dir=UPLOAD_FOLDER) as f:
             f.write(r.content)
             tmp_path = f.name
 
-        image_id, tmp_path = _persist_image(tmp_path, f'ESP32-CAM_{ip}.jpg')
-
-        result = run_inference(tmp_path)
+        image_doc, img_path = _persist_image_file(tmp_path, f'ESP32-CAM_{ip}.jpg')
+        raw = _predict_cnn(img_path)
+        result = _enrich_prediction(raw)
         result['source']   = 'esp32'
         result['esp32_ip'] = ip
 
-        # ── Auto-sauvegarde MongoDB ──────────────────────────────────────────
-        entry = {
-            **result,
-            'image':   f'ESP32-CAM ({ip})',
-            'date':    datetime.now(timezone.utc),
-            'userId':  g.current_user['idUtilisateur'],
-        }
-        if image_id:
-            entry['imageId'] = image_id
-        _link_maladie(entry, result)
-        db_id = _save_prediction(entry)
-        if db_id:
-            result['dbId'] = db_id
-            _link_recent_sensor_data(db_id)
-        if image_id:
-            result['imageId'] = image_id
-
-        return jsonify(result)
-
     except http_requests.exceptions.ConnectTimeout:
-        return jsonify({'error': f'ESP32 injoignable à {ip} (timeout)'}), 504
+        raise HTTPException(status_code=504, detail=f'ESP32 injoignable à {ip} (timeout)')
     except http_requests.exceptions.ConnectionError:
-        return jsonify({'error': f"Impossible de se connecter à {ip} — vérifiez l'IP"}), 503
+        raise HTTPException(status_code=503, detail=f"Impossible de se connecter à {ip} — vérifiez l'IP")
     except http_requests.exceptions.HTTPError as e:
-        return jsonify({'error': f'ESP32 erreur HTTP : {e}'}), 502
+        raise HTTPException(status_code=502, detail=f'ESP32 erreur HTTP : {e}')
+    except HTTPException:
+        raise
+    except ModuleNotFoundError:
+        raise HTTPException(status_code=503, detail="Modèle CNN indisponible — installez requirements.txt (tensorflow)")
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         print(f"Erreur ESP32 capture : {e}")
-        return jsonify({'error': f'Erreur interne : {str(e)}'}), 500
+        raise HTTPException(status_code=500, detail=f'Erreur interne : {str(e)}')
+
+    entry = {
+        **result,
+        'image':   image_doc,
+        'date':    datetime.now(timezone.utc),
+        'userId':  current_user['idUtilisateur'],
+    }
+    _link_recommandation(entry, result)
+    db_id = _save_analysis(entry)
+    if db_id:
+        result['idAnalyse'] = db_id
+        _link_recent_capteurs(db_id)
+
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ── ESP32-CAM : PROXY DU FLUX MJPEG ───────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/api/esp32/stream')
-def esp32_stream_proxy():
-    ip = request.args.get('ip', ESP32_DEFAULT_IP).strip()
+@app.get('/api/esp32/stream')
+def esp32_stream_proxy(ip: str = Query(default=None)):
+    ip = (ip or ESP32_DEFAULT_IP).strip()
     if not ip:
-        return jsonify({'error': 'IP manquante'}), 400
+        raise HTTPException(status_code=400, detail='IP manquante')
 
     stream_url = f'http://{ip}:81/stream'
     try:
         esp32_response = http_requests.get(stream_url, stream=True, timeout=10)
-
-        def generate():
-            try:
-                for chunk in esp32_response.iter_content(chunk_size=4096):
-                    yield chunk
-            except Exception:
-                pass
-
-        return Response(
-            generate(),
-            content_type=esp32_response.headers.get('Content-Type', 'multipart/x-mixed-replace'),
-            status=200,
-        )
     except Exception as e:
-        return jsonify({'error': str(e)}), 503
+        raise HTTPException(status_code=503, detail=str(e))
+
+    def generate():
+        try:
+            for chunk in esp32_response.iter_content(chunk_size=4096):
+                yield chunk
+        except Exception:
+            pass
+
+    return StreamingResponse(
+        generate(),
+        media_type=esp32_response.headers.get('Content-Type', 'multipart/x-mixed-replace'),
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ── HISTORIQUE DES ANALYSES (MongoDB) ─────────────────────────────────────────
+# ── HISTORIQUE DES ANALYSES (legacy, non authentifié) ─────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/api/history', methods=['GET'])
+@app.get('/api/history')
 def get_history():
     """Retourne les 200 dernières analyses triées du plus récent au plus ancien."""
-    col = get_history_col()
+    col = get_analyses_col()
     if col is None:
-        return jsonify([])
-    try:
-        from pymongo import DESCENDING
-        records = list(col.find({}).sort('date', DESCENDING).limit(200))
-        return jsonify([_serialize(r) for r in records])
-    except Exception as e:
-        print(f"Erreur lecture historique : {e}")
-        return jsonify([])
+        return []
+    from pymongo import DESCENDING
+    records = list(col.find({}).sort('date', DESCENDING).limit(200))
+    return [serialize(r) for r in records]
 
 
-@app.route('/api/history', methods=['POST'])
-def post_history():
-    """Sauvegarde une entrée (utilisé par le frontend pour les analyses mock)."""
-    col = get_history_col()
+@app.post('/api/history', status_code=201)
+def post_history(record: dict):
+    col = get_analyses_col()
     if col is None:
-        return jsonify({'ok': False, 'error': 'MongoDB non disponible'}), 503
-    try:
-        record = request.get_json(silent=True)
-        if not record:
-            return jsonify({'error': 'Données manquantes'}), 400
-        # Normalise le champ date en datetime Python
-        raw_date = record.get('date')
-        if isinstance(raw_date, str):
-            try:
-                record['date'] = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
-            except ValueError:
-                record['date'] = datetime.now(timezone.utc)
-        else:
+        raise HTTPException(status_code=503, detail='MongoDB non disponible')
+    raw_date = record.get('date')
+    if isinstance(raw_date, str):
+        try:
+            record['date'] = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
+        except ValueError:
             record['date'] = datetime.now(timezone.utc)
+    else:
+        record['date'] = datetime.now(timezone.utc)
+    result = col.insert_one(record)
+    return {'ok': True, 'idAnalyse': str(result.inserted_id)}
 
-        result = col.insert_one(record)
-        return jsonify({'ok': True, 'dbId': str(result.inserted_id)}), 201
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
 
-
-@app.route('/api/history/<db_id>', methods=['DELETE'])
-def delete_one_history(db_id):
-    """Supprime un enregistrement par son _id MongoDB."""
-    col = get_history_col()
+@app.delete('/api/history/{analyse_id}')
+def delete_one_history(analyse_id: str):
+    col = get_analyses_col()
     if col is None:
-        return jsonify({'ok': False}), 503
-    try:
-        from bson import ObjectId
-        col.delete_one({'_id': ObjectId(db_id)})
-        return jsonify({'ok': True})
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 400
+        raise HTTPException(status_code=503, detail='MongoDB non disponible')
+    col.delete_one({'_id': _object_id(analyse_id)})
+    return {'ok': True}
 
 
-@app.route('/api/history', methods=['DELETE'])
+@app.delete('/api/history')
 def clear_history():
-    """Vide tout l'historique."""
-    col = get_history_col()
+    col = get_analyses_col()
     if col is None:
-        return jsonify({'ok': False}), 503
-    try:
-        col.delete_many({})
-        return jsonify({'ok': True})
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=503, detail='MongoDB non disponible')
+    col.delete_many({})
+    return {'ok': True}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ── HISTORIQUE DE L'UTILISATEUR CONNECTÉ (diagramme "Consultation historique") ─
+# ── HISTORIQUE DE L'UTILISATEUR CONNECTÉ ──────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/history', methods=['GET'])
-@role_required('maraicher', 'administrateur')
-def get_user_history():
-    """Maraîcher : ses propres analyses (consulterHistorique()).
-    Administrateur : toutes les analyses (consulterAnalyses()).
-    Même format que /api/history (label, confidence, disease_info, image, source, date)
-    pour rester compatible avec transformBackendResponse() côté frontend."""
-    col = get_history_col()
+@app.get('/history')
+def get_user_history(current_user: dict = Depends(require_role('maraicher', 'administrateur'))):
+    """Maraîcher : ses propres analyses. Administrateur : toutes les analyses."""
+    col = get_analyses_col()
     if col is None:
-        return jsonify([])
-
+        return []
     query = {}
-    if g.current_user.get('role') != 'administrateur':
-        query['userId'] = g.current_user['idUtilisateur']
-
-    try:
-        from pymongo import DESCENDING
-        records = list(col.find(query).sort('date', DESCENDING).limit(200))
-        return jsonify([_serialize(r) for r in records])
-    except Exception as e:
-        print(f"Erreur lecture /history : {e}")
-        return jsonify([])
+    if current_user.get('role') != 'administrateur':
+        query['userId'] = current_user['idUtilisateur']
+    from pymongo import DESCENDING
+    records = list(col.find(query).sort('date', DESCENDING).limit(200))
+    return [serialize(r) for r in records]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ── GESTION DES UTILISATEURS (réservée à l'Administrateur) ───────────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/users', methods=['GET'])
-@role_required('administrateur')
-def list_users():
-    col = get_users_col()
+@app.get('/users')
+def list_users(current_user: dict = Depends(require_role('administrateur'))):
+    col = get_utilisateurs_col()
     if col is None:
-        return jsonify({'error': 'Base de données indisponible'}), 503
-    return jsonify([_user_to_dict(u) for u in col.find({})])
+        raise HTTPException(status_code=503, detail='Base de données indisponible')
+    return [_user_to_dict(u) for u in col.find({})]
 
 
-@app.route('/users', methods=['POST'])
-@role_required('administrateur')
-def create_user():
-    """Administrateur.ajouterUtilisateur()"""
-    data = request.get_json(silent=True) or {}
-    nom          = (data.get('nom') or '').strip()
-    prenom       = (data.get('prenom') or '').strip()
-    email        = (data.get('email') or '').strip().lower()
-    mot_de_passe = data.get('motDePasse') or ''
-    role         = data.get('role') or 'maraicher'
-    exploitation = data.get('exploitation')
+@app.post('/users', status_code=201)
+def create_user(payload: UserCreate, current_user: dict = Depends(require_role('administrateur'))):
+    nom          = payload.nom.strip()
+    email        = payload.email.strip().lower()
+    mot_de_passe = payload.motDePasse
+    role         = payload.role or 'maraicher'
 
     if not nom or not email or not mot_de_passe:
-        return jsonify({'error': 'nom, email et motDePasse sont requis'}), 400
+        raise HTTPException(status_code=400, detail='nom, email et motDePasse sont requis')
     if role not in ('administrateur', 'maraicher'):
-        return jsonify({'error': "role doit être 'administrateur' ou 'maraicher'"}), 400
+        raise HTTPException(status_code=400, detail="role doit être 'administrateur' ou 'maraicher'")
 
-    col = get_users_col()
+    col = get_utilisateurs_col()
     if col is None:
-        return jsonify({'error': 'Base de données indisponible'}), 503
+        raise HTTPException(status_code=503, detail='Base de données indisponible')
 
     doc = {
-        'nom': nom, 'prenom': prenom, 'email': email,
+        'nom': nom, 'prenom': payload.prenom, 'email': email,
         'motDePasse': hash_password(mot_de_passe), 'role': role,
     }
     if role == 'maraicher':
-        doc['exploitation'] = exploitation
+        doc['exploitation'] = payload.exploitation
 
     try:
         result = col.insert_one(doc)
         doc['_id'] = result.inserted_id
-        return jsonify(_user_to_dict(doc)), 201
+        return _user_to_dict(doc)
     except Exception as e:
         if 'duplicate key' in str(e).lower():
-            return jsonify({'error': 'Cet email est déjà utilisé'}), 409
-        return jsonify({'error': str(e)}), 500
+            raise HTTPException(status_code=409, detail='Cet email est déjà utilisé')
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.route('/users/<user_id>', methods=['PUT'])
-@role_required('administrateur')
-def update_user(user_id):
-    """Administrateur.modifierUtilisateur()"""
-    from bson import ObjectId
-    data = request.get_json(silent=True) or {}
-
-    updates = {}
-    for field in ('nom', 'prenom', 'email', 'role', 'exploitation'):
-        if field in data:
-            updates[field] = data[field]
-    if 'motDePasse' in data and data['motDePasse']:
-        updates['motDePasse'] = hash_password(data['motDePasse'])
+@app.put('/users/{user_id}')
+def update_user(user_id: str, payload: UserUpdate, current_user: dict = Depends(require_role('administrateur'))):
+    updates = {k: v for k, v in payload.model_dump(exclude={'motDePasse'}).items() if v is not None}
+    if payload.motDePasse:
+        updates['motDePasse'] = hash_password(payload.motDePasse)
 
     if not updates:
-        return jsonify({'error': 'Aucun champ à mettre à jour'}), 400
+        raise HTTPException(status_code=400, detail='Aucun champ à mettre à jour')
 
-    col = get_users_col()
+    col = get_utilisateurs_col()
     if col is None:
-        return jsonify({'error': 'Base de données indisponible'}), 503
+        raise HTTPException(status_code=503, detail='Base de données indisponible')
 
-    try:
-        result = col.find_one_and_update(
-            {'_id': ObjectId(user_id)}, {'$set': updates},
-            return_document=True,
-        )
-        if result is None:
-            return jsonify({'error': 'Utilisateur introuvable'}), 404
-        return jsonify(_user_to_dict(result))
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    result = col.find_one_and_update(
+        {'_id': _object_id(user_id)}, {'$set': updates},
+        return_document=True,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail='Utilisateur introuvable')
+    return _user_to_dict(result)
 
 
-@app.route('/users/<user_id>', methods=['DELETE'])
-@role_required('administrateur')
-def delete_user(user_id):
-    """Administrateur.supprimerUtilisateur()"""
-    from bson import ObjectId
-    col = get_users_col()
+@app.delete('/users/{user_id}')
+def delete_user(user_id: str, current_user: dict = Depends(require_role('administrateur'))):
+    col = get_utilisateurs_col()
     if col is None:
-        return jsonify({'error': 'Base de données indisponible'}), 503
-    try:
-        result = col.delete_one({'_id': ObjectId(user_id)})
-        if result.deleted_count == 0:
-            return jsonify({'error': 'Utilisateur introuvable'}), 404
-        return jsonify({'ok': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        raise HTTPException(status_code=503, detail='Base de données indisponible')
+    result = col.delete_one({'_id': _object_id(user_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail='Utilisateur introuvable')
+    return {'ok': True}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ── DONNÉES CAPTEURS (DonneesCapteur : temp/humidité air, humidité sol) ───────
+# ── DONNÉES CAPTEURS (température/humidité air, humidité sol) ────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 EXEMPLE_DONNEES_CAPTEUR = {
     'temperatureAir': 24.5,
@@ -805,14 +587,10 @@ EXEMPLE_DONNEES_CAPTEUR = {
 }
 
 
-def _insert_sensor_reading(data: dict):
-    col = get_sensors_col()
+def _insert_sensor_reading(data: dict) -> str:
+    col = get_capteurs_col()
     if col is None:
-        return None, jsonify({'error': 'Base de données indisponible'}), 503
-
-    for field in ('temperatureAir', 'humiditeAir', 'humiditeSol'):
-        if field not in data:
-            return None, jsonify({'error': f'Champ manquant : {field}'}), 400
+        raise HTTPException(status_code=503, detail='Base de données indisponible')
 
     raw_date = data.get('dateMesure')
     if isinstance(raw_date, str):
@@ -830,125 +608,80 @@ def _insert_sensor_reading(data: dict):
         'dateMesure':     date_mesure,
     }
     if data.get('analyseId'):
-        doc['analyseId'] = data['analyseId']  # référence optionnelle vers Analyse.idAnalyse
+        doc['analyseId'] = data['analyseId']
 
     result = col.insert_one(doc)
-    return str(result.inserted_id), None, None
+    return str(result.inserted_id)
 
 
-@app.route('/sensors/data', methods=['POST'])
-def post_sensor_data():
-    """DonneesCapteur.recevoirDonnees() — appelé par le capteur physique (pas d'auth requise)."""
-    data = request.get_json(silent=True) or {}
-    inserted_id, error_response, status = _insert_sensor_reading(data)
-    if error_response:
-        return error_response, status
-    return jsonify({'ok': True, 'id': inserted_id}), 201
+@app.post('/sensors/data', status_code=201)
+def post_sensor_data(payload: SensorData):
+    """Appelé par le capteur physique (ESP32 devkit) — pas d'authentification requise."""
+    inserted_id = _insert_sensor_reading(payload.model_dump())
+    return {'ok': True, 'id': inserted_id}
 
 
-@app.route('/sensors/data/simulate', methods=['POST'])
+@app.post('/sensors/data/simulate', status_code=201)
 def simulate_sensor_data():
     """Route de test : simule l'envoi de données par un capteur, sans matériel réel."""
-    inserted_id, error_response, status = _insert_sensor_reading(dict(EXEMPLE_DONNEES_CAPTEUR))
-    if error_response:
-        return error_response, status
-    return jsonify({'ok': True, 'id': inserted_id, 'donnees_simulees': EXEMPLE_DONNEES_CAPTEUR}), 201
+    inserted_id = _insert_sensor_reading(dict(EXEMPLE_DONNEES_CAPTEUR))
+    return {'ok': True, 'id': inserted_id, 'donnees_simulees': EXEMPLE_DONNEES_CAPTEUR}
 
 
-@app.route('/sensors/data', methods=['GET'])
-@role_required('maraicher')
-def get_sensor_data():
-    """Maraicher.consulterDonnees()"""
-    col = get_sensors_col()
+@app.get('/sensors/data')
+def get_sensor_data(current_user: dict = Depends(require_role('maraicher'))):
+    col = get_capteurs_col()
     if col is None:
-        return jsonify([])
-    try:
-        records = list(col.find({}).sort('dateMesure', -1).limit(200))
-        return jsonify([_serialize(r) for r in records])
-    except Exception as e:
-        print(f"Erreur lecture /sensors/data : {e}")
-        return jsonify([])
+        return []
+    records = list(col.find({}).sort('dateMesure', -1).limit(200))
+    return [serialize(r) for r in records]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ── IMAGES PERSISTÉES (idImage, nomImage, cheminImage, dateCapture) ──────────
+# ── IMAGE D'UNE ANALYSE (embarquée dans le document 'analyses') ──────────────
 # ══════════════════════════════════════════════════════════════════════════════
-@app.route('/images/<image_id>', methods=['GET'])
-def get_image(image_id):
-    """Sert le fichier image d'une Analyse — servi par idImage (pas par chemin brut)
-    pour ne jamais exposer le système de fichiers à un chemin arbitraire."""
-    from bson import ObjectId
-    from flask import send_from_directory
-    col = get_images_col()
+@app.get('/images/{analyse_id}')
+def get_image(analyse_id: str):
+    col = get_analyses_col()
     if col is None:
-        return jsonify({'error': 'Base de données indisponible'}), 503
-    try:
-        doc = col.find_one({'_id': ObjectId(image_id)})
-    except Exception:
-        return jsonify({'error': 'Identifiant invalide'}), 400
+        raise HTTPException(status_code=503, detail='Base de données indisponible')
+    doc = col.find_one({'_id': _object_id(analyse_id)})
+    if doc is None or not doc.get('image'):
+        raise HTTPException(status_code=404, detail='Image introuvable')
+    chemin = os.path.join(os.path.abspath(UPLOAD_FOLDER), doc['image']['cheminImage'])
+    if not os.path.exists(chemin):
+        raise HTTPException(status_code=404, detail='Image introuvable')
+    return FileResponse(chemin)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── CATALOGUE MALADIE + RECOMMANDATION (collection unique) ───────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+@app.get('/recommandations')
+def list_recommandations():
+    col = get_recommandations_col()
+    if col is None:
+        return []
+    return [_recommandation_to_dict(r) for r in col.find({})]
+
+
+@app.get('/recommandations/{recommandation_id}')
+def get_recommandation(recommandation_id: str):
+    col = get_recommandations_col()
+    if col is None:
+        raise HTTPException(status_code=503, detail='Base de données indisponible')
+    doc = col.find_one({'_id': _object_id(recommandation_id)})
     if doc is None:
-        return jsonify({'error': 'Image introuvable'}), 404
-    return send_from_directory(os.path.abspath(UPLOAD_FOLDER), doc['cheminImage'])
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ── CATALOGUE DES MALADIES (référentiel, lié 1 Recommandation) ───────────────
-# ══════════════════════════════════════════════════════════════════════════════
-@app.route('/maladies', methods=['GET'])
-def list_maladies():
-    col = get_maladies_col()
-    if col is None:
-        return jsonify([])
-    return jsonify([_maladie_to_dict(m) for m in col.find({})])
-
-
-@app.route('/maladies/<maladie_id>', methods=['GET'])
-def get_maladie(maladie_id):
-    from bson import ObjectId
-    col = get_maladies_col()
-    if col is None:
-        return jsonify({'error': 'Base de données indisponible'}), 503
-    try:
-        maladie = col.find_one({'_id': ObjectId(maladie_id)})
-    except Exception:
-        return jsonify({'error': 'Identifiant invalide'}), 400
-    if maladie is None:
-        return jsonify({'error': 'Maladie introuvable'}), 404
-
-    reco = None
-    if maladie.get('recommandationId'):
-        reco = get_recommandations_col().find_one({'_id': maladie['recommandationId']})
-    return jsonify(_maladie_to_dict(maladie, reco))
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ── GESTIONNAIRES D'ERREURS ────────────────────────────────────────────────────
-# ══════════════════════════════════════════════════════════════════════════════
-@app.errorhandler(404)
-def not_found(_):
-    return jsonify({'error': 'Route introuvable', 'endpoints': [
-        '/', '/health', '/auth/login', '/api/predict', '/api/predict/cnn',
-        '/api/esp32/status', '/api/esp32/capture', '/api/history', '/history',
-        '/users', '/sensors/data',
-    ]}), 404
-
-@app.errorhandler(413)
-def too_large(_):
-    return jsonify({'error': 'Fichier trop volumineux. Maximum : 16 Mo'}), 413
-
-@app.errorhandler(500)
-def internal_error(_):
-    return jsonify({'error': 'Erreur interne du serveur'}), 500
+        raise HTTPException(status_code=404, detail='Recommandation introuvable')
+    return _recommandation_to_dict(doc)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ── DÉMARRAGE ─────────────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
-if __name__ == '__main__':
-    port  = int(os.getenv('PORT', 5000))
-    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    get_history_col()   # initialise la connexion au démarrage
-    print(f"\n🌿  PlantAI Backend démarré sur : http://localhost:{port}")
+@app.on_event('startup')
+def on_startup():
+    get_db()  # initialise la connexion MongoDB au démarrage
+    print(f"\n🌿  PlantAI Backend démarré (FastAPI)")
     print(f"📡  ESP32 par défaut          : {ESP32_DEFAULT_IP or 'non configuré'}")
-    print(f"🧠  Modèle                    : HuggingFace ViT / EfficientNet-B4\n")
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    print(f"🧠  Modèle                    : CNN Keras (ia/model.py)\n")
