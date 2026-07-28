@@ -1932,130 +1932,6 @@
       gap: 5px;
     }
     .footer-made span { color: #ef4444; font-size: 0.85rem; }
-    /* ══════════ PAGE PROJET ══════════ */
-    .proj-hero {
-      background: linear-gradient(135deg, #0d6e2e 0%, #1db954 60%, #16a34a 100%);
-      color: #fff; border-radius: 18px; padding: 34px 36px; margin-bottom: 22px;
-      position: relative; overflow: hidden; box-shadow: var(--shadow-green);
-    }
-    .proj-hero::after {
-      content:''; position:absolute; width:220px; height:220px; border-radius:50%;
-      background: rgba(255,255,255,0.08); top:-70px; right:-50px;
-    }
-    .proj-hero-tag { font-size:0.72rem; font-weight:800; letter-spacing:2px; text-transform:uppercase; opacity:0.85; margin-bottom:10px; }
-    .proj-hero h1 { font-size:1.9rem; font-weight:900; margin:0 0 8px; line-height:1.15; }
-    .proj-hero p  { font-size:0.95rem; opacity:0.9; margin:0; max-width:640px; line-height:1.55; }
-    .proj-hero-meta { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; position:relative; z-index:1; }
-    .proj-hero-chip { background:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.28); border-radius:20px; padding:5px 14px; font-size:0.75rem; font-weight:700; }
-
-    .proj-toc { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px; }
-    .proj-toc-item {
-      display:flex; align-items:center; gap:7px; background:var(--white); border:1.5px solid var(--border);
-      border-radius:10px; padding:8px 13px; font-size:0.8rem; font-weight:600; color:var(--text2);
-      cursor:pointer; transition:all 0.16s; text-decoration:none;
-    }
-    .proj-toc-item:hover { border-color:var(--green); color:var(--green-dark); background:var(--green-pale); transform:translateY(-1px); }
-    .proj-toc-num { width:20px; height:20px; border-radius:6px; background:var(--green-pale); color:var(--green-dark); font-size:0.68rem; font-weight:800; display:flex; align-items:center; justify-content:center; }
-
-    .proj-section {
-      background:var(--white); border:1.5px solid var(--border); border-radius:16px;
-      padding:26px 30px; margin-bottom:18px; box-shadow:var(--shadow-sm); scroll-margin-top:80px;
-    }
-    .proj-section-head { display:flex; align-items:center; gap:14px; margin-bottom:16px; }
-    .proj-num {
-      width:38px; height:38px; border-radius:11px; flex-shrink:0;
-      background:linear-gradient(135deg,var(--green),var(--green-dark)); color:#fff;
-      font-size:1rem; font-weight:900; display:flex; align-items:center; justify-content:center;
-      box-shadow:0 3px 10px rgba(29,185,84,0.3);
-    }
-    .proj-h { font-size:1.2rem; font-weight:800; color:var(--text); margin:0; }
-    .proj-body { font-size:0.9rem; color:var(--text2); line-height:1.7; }
-    .proj-body strong { color:var(--text); }
-    .proj-quote {
-      background:var(--green-pale); border-left:4px solid var(--green); border-radius:0 10px 10px 0;
-      padding:14px 18px; font-size:0.92rem; color:var(--green-deep); font-weight:600; font-style:italic; line-height:1.6;
-    }
-
-    .proj-list { list-style:none; margin:0; padding:0; display:grid; gap:10px; }
-    .proj-list.cols2 { grid-template-columns:1fr 1fr; }
-    .proj-list li { display:flex; align-items:flex-start; gap:10px; font-size:0.88rem; color:var(--text2); line-height:1.5; }
-    .proj-list li::before { content:'✓'; color:var(--green); font-weight:900; flex-shrink:0; margin-top:1px; }
-
-    .proj-grid { display:grid; gap:14px; }
-    .proj-grid.g3 { grid-template-columns:repeat(3,1fr); }
-    .proj-grid.g2 { grid-template-columns:1fr 1fr; }
-    .proj-card { background:var(--bg); border:1.5px solid var(--border); border-radius:12px; padding:16px 18px; }
-    .proj-card-title { font-size:0.82rem; font-weight:800; color:var(--green-dark); margin-bottom:10px; display:flex; align-items:center; gap:7px; text-transform:uppercase; letter-spacing:0.5px; }
-
-    .proj-badges { display:flex; flex-wrap:wrap; gap:8px; }
-    .proj-badge { background:var(--white); border:1.5px solid var(--border2); border-radius:8px; padding:6px 12px; font-size:0.8rem; font-weight:700; color:var(--text); }
-    .proj-badge.green { background:var(--green-pale); border-color:#a7f3c3; color:var(--green-dark); }
-
-    /* Flow diagram */
-    .proj-flow { display:flex; flex-direction:column; align-items:center; gap:0; padding:8px 0; }
-    .proj-flow-box {
-      background:var(--white); border:2px solid var(--green); border-radius:12px;
-      padding:11px 22px; font-size:0.86rem; font-weight:700; color:var(--text);
-      text-align:center; box-shadow:var(--shadow-sm); min-width:180px;
-    }
-    .proj-flow-box.accent { background:linear-gradient(135deg,var(--green),var(--green-dark)); color:#fff; border-color:transparent; }
-    .proj-flow-box.sick { border-color:var(--orange); }
-    .proj-flow-box.healthy { border-color:var(--green); }
-    .proj-flow-arrow { color:var(--green); font-size:1.2rem; line-height:1; padding:6px 0; }
-    .proj-flow-split { display:flex; gap:40px; justify-content:center; flex-wrap:wrap; }
-    .proj-flow-col { display:flex; flex-direction:column; align-items:center; gap:0; }
-
-    /* Pseudo-code */
-    .proj-code {
-      background:#0f172a; color:#e2e8f0; border-radius:12px; padding:18px 22px;
-      font-family:'Courier New', monospace; font-size:0.85rem; line-height:1.75; overflow-x:auto;
-      border:1.5px solid #1e293b;
-    }
-    .proj-code .kw { color:#7dd3fc; font-weight:700; }
-    .proj-code .fn { color:#6ee7a0; }
-    .proj-code .cm { color:#64748b; font-style:italic; }
-    .proj-code .indent { padding-left:22px; display:inline-block; }
-
-    /* Disease table */
-    .proj-table { width:100%; border-collapse:collapse; font-size:0.86rem; border-radius:12px; overflow:hidden; border:1.5px solid var(--border); }
-    .proj-table thead th { background:linear-gradient(135deg,var(--green),var(--green-dark)); color:#fff; padding:11px 16px; text-align:left; font-size:0.76rem; text-transform:uppercase; letter-spacing:0.6px; }
-    .proj-table tbody td { padding:10px 16px; border-bottom:1px solid var(--border); color:var(--text2); }
-    .proj-table tbody tr:last-child td { border-bottom:none; }
-    .proj-table tbody tr:hover { background:var(--green-pale); }
-    .proj-table .td-culture { font-weight:800; color:var(--text); }
-
-    /* Chapters (mémoire) */
-    .proj-chapter { display:flex; gap:14px; background:var(--bg); border:1.5px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:12px; }
-    .proj-chapter-num { width:34px; height:34px; border-radius:10px; flex-shrink:0; background:linear-gradient(135deg,#3b82f6,#1d4ed8); color:#fff; font-size:0.9rem; font-weight:900; display:flex; align-items:center; justify-content:center; }
-    .proj-chapter-title { font-size:0.92rem; font-weight:800; color:var(--text); margin-bottom:6px; }
-    .proj-chapter-sub { font-size:0.8rem; color:var(--text3); display:flex; flex-wrap:wrap; gap:6px; }
-    .proj-chapter-sub span { background:var(--white); border:1px solid var(--border); border-radius:6px; padding:2px 9px; }
-
-    .proj-persp { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    .proj-persp-item { display:flex; align-items:flex-start; gap:10px; background:var(--green-pale); border:1px solid #a7f3c3; border-radius:10px; padding:12px 14px; font-size:0.85rem; color:var(--green-deep); font-weight:600; line-height:1.45; }
-
-    /* Dark mode */
-    body.dark .proj-section { background:#13161f; border-color:var(--border); }
-    body.dark .proj-toc-item { background:#13161f; border-color:var(--border); }
-    body.dark .proj-card { background:#0f1117; border-color:var(--border); }
-    body.dark .proj-badge { background:#13161f; border-color:var(--border2); color:var(--text); }
-    body.dark .proj-flow-box { background:#13161f; }
-    body.dark .proj-table tbody td { border-color:var(--border); }
-    body.dark .proj-table tbody tr:hover { background:#0d2e1a; }
-    body.dark .proj-chapter { background:#0f1117; border-color:var(--border); }
-    body.dark .proj-chapter-sub span { background:#13161f; border-color:var(--border); }
-    body.dark .proj-persp-item { background:#0d2e1a; border-color:#1a4a2a; color:#6ee7a0; }
-    body.dark .proj-quote { background:#0d2e1a; color:#6ee7a0; }
-
-    @media (max-width:768px) {
-      .proj-hero { padding:22px 20px; }
-      .proj-hero h1 { font-size:1.4rem; }
-      .proj-section { padding:20px 18px; }
-      .proj-grid.g3, .proj-grid.g2 { grid-template-columns:1fr; }
-      .proj-list.cols2 { grid-template-columns:1fr; }
-      .proj-persp { grid-template-columns:1fr; }
-      .proj-flow-split { gap:14px; }
-    }
   </style>
 </head>
 <body>
@@ -2078,7 +1954,7 @@ function transformBackendResponse(raw) {
     maladie:     info.maladie || raw.maladie || "Espèce non reconnue par le modèle",
     niveau:      info.niveau || "unknown",
     score,
-    conseil:     info.conseil || "⚠️ Le modèle n'a pas reconnu cette plante avec certitude. Essayez avec une photo nette d'une feuille (tomate, pomme, maïs, raisin, pêche, poivron, pomme de terre, fraise, cerise, myrtille, orange, soja, courge, framboise).",
+    conseil:     info.conseil || "⚠️ Le modèle n'a pas reconnu cette plante avec certitude. Essayez avec une photo nette d'une feuille d'une des cultures supportées (voir la liste ci-dessous).",
     plante:      info.plante      || null,
     description: info.description || null,
     traitement:  info.traitement  || null,
@@ -2103,7 +1979,7 @@ const today   = () => new Date().toLocaleDateString("fr-FR",{weekday:"long",day:
 
 /* ── Sensor simulation (base) ── */
 function useSensors() {
-  const init = {temp:24.3,humidity:62,soil:65,light:74};
+  const init = {temp:24.3,humidity:62,soil:65};
   const [s, setS] = useState(init);
   const [hist, setHist] = useState({labels:[],temp:[],hum:[],soil:[]});
   useEffect(()=>{
@@ -2112,7 +1988,6 @@ function useSensors() {
         temp:    +(Math.min(40,Math.max(10, p.temp    +(Math.random()-.5)*.5))).toFixed(1),
         humidity: Math.min(95,Math.max(20, Math.round(p.humidity+(Math.random()-.5)*2))),
         soil:     Math.min(95,Math.max(20, Math.round(p.soil    +(Math.random()-.5)*1.5))),
-        light:    Math.min(100,Math.max(20,Math.round(p.light   +(Math.random()-.5)*2))),
       }));
     },2500);
     return ()=>clearInterval(id);
@@ -2548,7 +2423,7 @@ function AchievementToast({ data, onDone }) {
 /* ══════════════ LIVE TICKER (hook) ══════════════ */
 function useTicker(result, connected) {
   var esp32Status = connected?"ESP32-CAM · Connectée ✓":"ESP32-CAM · Hors ligne";
-  var base=[esp32Status,"CNN Keras · Chargé","38 classes PlantVillage","FastAPI · Prête","MongoDB · Actif"];
+  var base=[esp32Status,"CNN Keras · Chargé","FastAPI · Prête","MongoDB · Actif"];
   var msgs=result?["Dernier: "+result.maladie.slice(0,22),"Conf: "+result.score+"%"].concat(base):base;
   var [idx,setIdx]=useState(0), [tick,setTick]=useState(0);
   useEffect(function(){
@@ -2862,8 +2737,8 @@ function LoginPage({ onLogin /* onLogin(email) */ }) {
     };
   }, []);
 
-  const DEMO_EMAIL    = "etudiant@plantai.fr";
-  const DEMO_PASSWORD = "plantai2026";
+  const DEMO_EMAIL    = "admin@plantai.com";
+  const DEMO_PASSWORD = "plantai123";
 
   const validate = () => {
     if (!email.trim())    return "Veuillez saisir votre adresse e-mail.";
@@ -3543,7 +3418,6 @@ function App() {
               temp:     typeof d.temp     === 'number' ? +d.temp.toFixed(1)     : (p?.temp     ?? simSensors.temp),
               humidity: typeof d.humidity === 'number' ? Math.round(d.humidity) : (p?.humidity ?? simSensors.humidity),
               soil:  p?.soil  ?? simSensors.soil,
-              light: p?.light ?? simSensors.light,
             }));
             setSensorsReal(true);
           }
@@ -3734,7 +3608,7 @@ function App() {
           : `Analysé · Confiance : ${result.score}%`)
       : "Soumettez une image pour démarrer";
 
-  const TABS = [{id:"dashboard",label:"📊 Dashboard"},{id:"analyse",label:"🔍 Analyser"},{id:"history",label:"🗂️ Historique"},{id:"stats",label:"📈 Statistiques"},{id:"maladies",label:"🦠 Maladies"},{id:"projet",label:"📖 Projet"}]
+  const TABS = [{id:"dashboard",label:"📊 Dashboard"},{id:"analyse",label:"🔍 Analyser"},{id:"history",label:"🗂️ Historique"},{id:"stats",label:"📈 Statistiques"},{id:"maladies",label:"🦠 Maladies"}]
     .concat(userRole==="administrateur" ? [{id:"users",label:"🛡️ Utilisateurs"}] : []);
 
   /* ── Mobile menu ── */
@@ -3787,6 +3661,15 @@ function App() {
   const [noteModal,  setNoteModal]  = useState(null);   // {id, maladie, date, note}
   const [noteDraft,  setNoteDraft]  = useState("");
   const [malOpen,    setMalOpen]    = useState({});      // page "Maladies" : cultures dépliées
+
+  // ── Catalogue "recommandations" depuis le backend (reflète le modèle CNN réellement chargé) ──
+  const [catalogue, setCatalogue] = useState([]);
+  useEffect(() => {
+    fetch(`${API_URL}/recommandations`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setCatalogue(Array.isArray(data) ? data : []))
+      .catch(() => setCatalogue([]));
+  }, []);
 
   const openNote = (h) => { setNoteModal(h); setNoteDraft(h.note||""); };
   const saveNote = () => {
@@ -3861,7 +3744,6 @@ function App() {
         ["Temperature",   `${sensors.temp} deg C`,   sensors.temp < 18?"Froid":sensors.temp>32?"Chaud":"Normal"],
         ["Humidite air",  `${sensors.humidity} %`,   sensors.humidity<40?"Sec":sensors.humidity>80?"Sature":"Normal"],
         ["Humidite sol",  `${sensors.soil} %`,       sensors.soil<40?"Sec":sensors.soil>75?"Sature":"Normal"],
-        ["Luminosite",    `${sensors.light} %`,      sensors.light<30?"Sombre":sensors.light>85?"Fort":"Normal"],
       ];
       doc.autoTable({
         startY: y,
@@ -4344,7 +4226,7 @@ function App() {
               <div className="hb-label">🌡️ TEMPÉRATURE</div>
               <div className="hb-value"><AnimatedNumber value={sensors.temp} suffix="°C" decimals={1}/></div>
               <div className="hb-sub">{sensors.temp<18?"Trop froid":sensors.temp>32?"Trop chaud":"Température idéale"}</div>
-              <div className="hb-pill">{sensorsReal?"📡 ESP32 LIVE":"📡 ESP32 (sim)"}</div>
+              <div className="hb-pill">{sensorsReal?"🌡️ DHT11 LIVE":"🌡️ DHT11 (sim)"}</div>
             </TiltCard>
             <TiltCard className="hero-banner" style={{background:"linear-gradient(135deg,#8b5cf6,#6d28d9)",boxShadow:"0 8px 32px rgba(139,92,246,0.22)"}}>
               <div className="hb-bg-circle c1"/><div className="hb-bg-circle c2"/>
@@ -4352,13 +4234,6 @@ function App() {
               <div className="hb-value"><AnimatedNumber value={sensors.humidity} suffix="%" decimals={0}/></div>
               <div className="hb-sub">{sensors.humidity<40?"Air sec":sensors.humidity>80?"Trop humide":"Humidité correcte"}</div>
               <div className="hb-pill">{sensorsReal?"🌫️ DHT11 LIVE":"🌫️ DHT11 (sim)"}</div>
-            </TiltCard>
-            <TiltCard className="hero-banner" style={{background:"linear-gradient(135deg,#eab308,#a16207)",boxShadow:"0 8px 32px rgba(234,179,8,0.22)"}}>
-              <div className="hb-bg-circle c1"/><div className="hb-bg-circle c2"/>
-              <div className="hb-label">☀️ LUMINOSITÉ</div>
-              <div className="hb-value"><AnimatedNumber value={sensors.light} suffix="%" decimals={0}/></div>
-              <div className="hb-sub">{sensors.light<30?"Trop sombre":sensors.light>85?"Trop lumineux":"Luminosité idéale"}</div>
-              <div className="hb-pill">🔆 Capteur LDR</div>
             </TiltCard>
           </div>
         </div>
@@ -4578,7 +4453,7 @@ function App() {
           <div className="chart-card">
             <div className="cc-title" style={{marginBottom:"4px"}}>🧠 Diagnostic IA</div>
             <div className="cc-sub">
-              Modèle : CNN Keras (MobileNetV2) — Dataset PlantVillage 38 classes
+              Modèle : CNN Keras (MobileNetV2) — {catalogue.length ? `${catalogue.length + new Set(catalogue.map(r=>r.plante).filter(Boolean)).size} classes` : "catalogue…"}
               {result?.label && <span style={{marginLeft:"6px",fontSize:"0.65rem",background:"#dcfce7",color:"#16a34a",borderRadius:"4px",padding:"1px 6px",fontWeight:700}}>CNN Keras</span>}
             </div>
 
@@ -4614,10 +4489,13 @@ function App() {
                           <div style={{fontSize:"0.76rem",color:"#78350f",lineHeight:1.7}}>{result.conseil}</div>
                         </div>
                         <div style={{background:"var(--green-pale)",border:"1.5px solid #a7f3c3",borderRadius:"12px",padding:"12px 14px",fontSize:"0.76rem",color:"var(--green-deep)",lineHeight:1.7}}>
-                          <strong>14 espèces supportées :</strong><br/>
-                          🍅 Tomate · 🍎 Pomme · 🌽 Maïs · 🍇 Raisin · 🍑 Pêche · 🌶️ Poivron<br/>
-                          🥔 Pomme de terre · 🍓 Fraise · 🍒 Cerise · 🫐 Myrtille · 🍊 Orange<br/>
-                          🌱 Soja · 🎃 Courge · 🫐 Framboise
+                          {(() => {
+                            const cultures = [...new Set(catalogue.map(r=>r.plante).filter(Boolean))];
+                            return <>
+                              <strong>{cultures.length || "?"} culture{cultures.length>1?"s":""} supportée{cultures.length>1?"s":""} :</strong><br/>
+                              {cultures.length ? cultures.join(" · ") : "Chargement du catalogue…"}
+                            </>;
+                          })()}
                         </div>
                       </div>
                     : <>
@@ -4630,7 +4508,7 @@ function App() {
                             <div style={{fontSize:"0.76rem",color:"var(--text2)",lineHeight:1.6}}>
                               Architecture : <strong style={{color:"var(--text)"}}>CNN Keras (MobileNetV2)</strong><br/>
                               Dataset : <strong style={{color:"var(--text)"}}>PlantVillage</strong><br/>
-                              Classes : <strong style={{color:"var(--text)"}}>38</strong>
+                              Classes : <strong style={{color:"var(--text)"}}>{catalogue.length ? catalogue.length + new Set(catalogue.map(r=>r.plante).filter(Boolean)).size : "…"}</strong>
                             </div>
                           </div>
                         </div>
@@ -4916,7 +4794,7 @@ function App() {
 
             {/* Stats capteurs */}
             <div className="chart-card">
-              <div className="cc-title" style={{marginBottom:"2px"}}>📡 État actuel ESP32</div>
+              <div className="cc-title" style={{marginBottom:"2px"}}>📡 État actuel des capteurs</div>
               <div className="cc-sub" style={{marginBottom:"14px"}}>Valeurs capteurs en temps réel</div>
               {[
                 {label:"Température",  val:`${sensors.temp}°C`,  pct:Math.round((sensors.temp-10)/30*100), color:"#f59e0b", icon:"🌡️",
@@ -4925,8 +4803,6 @@ function App() {
                   status: sensors.humidity<40?"Sec":sensors.humidity>80?"Saturé":"Optimal"},
                 {label:"Humidité sol", val:`${sensors.soil}%`, pct:sensors.soil, color:"#1db954", icon:"🌱",
                   status: sensors.soil<40?"Sec":sensors.soil>75?"Saturé":"Optimal"},
-                {label:"Luminosité",   val:`${sensors.light}%`,  pct:sensors.light, color:"#eab308", icon:"☀️",
-                  status: sensors.light<30?"Sombre":sensors.light>85?"Fort":"Optimal"},
               ].map(s=>(
                 <div className="sensor-row" key={s.label}>
                   <div className="sensor-head">
@@ -4952,15 +4828,18 @@ function App() {
 
       {/* ════ PAGE MALADIES ════ */}
       {page==="maladies" && (()=>{
-        const totalMal = DISEASE_DB.reduce((s,c)=>s+c.maladies.filter(m=>m.niveau!=="healthy").length,0);
-        const totalCultures = DISEASE_DB.length;
-        const totalClasses  = DISEASE_DB.reduce((s,c)=>s+c.maladies.length,0);
+        // Chiffres calculés depuis le catalogue réel du backend (/recommandations),
+        // donc alignés automatiquement sur ce que le modèle CNN chargé sait reconnaître —
+        // jamais codés en dur. totalClasses = maladies + 1 classe "saine" par culture (approximation).
+        const totalMal = catalogue.length;
+        const totalCultures = new Set(catalogue.map(r=>r.plante).filter(Boolean)).size;
+        const totalClasses  = totalMal + totalCultures;
         const open   = malOpen;
         const toggle = k => setMalOpen(p=>({...p,[k]:!p[k]}));
         return (<>
           <div className="mal-intro">
             <h2>🦠 Maladies détectables par PlantAI</h2>
-            <p>Base de données PlantVillage · 38 classes · 13 cultures agricoles — détection par CNN Keras (MobileNetV2)</p>
+            <p>{totalClasses} classes · {totalCultures} cultures agricoles — détection par CNN Keras (MobileNetV2)</p>
           </div>
           <div className="mal-stats-row">
             <div className="mal-stat"><div className="ms-val">{totalCultures}</div><div className="ms-lbl">Cultures</div></div>
@@ -4999,7 +4878,7 @@ function App() {
           <div style={{background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",borderRadius:14,padding:"20px 24px",marginTop:8,color:"#fff"}}>
             <div style={{fontWeight:800,fontSize:"1rem",marginBottom:6}}>🧠 Modèle CNN Keras (MobileNetV2)</div>
             <div style={{fontSize:"0.84rem",opacity:.9,lineHeight:1.6}}>
-              Le diagnostic couvre les <strong>38 classes PlantVillage</strong> (13 cultures) sur lesquelles le
+              Le diagnostic couvre les <strong>{totalClasses} classes</strong> ({totalCultures} cultures) sur lesquelles le
               modèle a été entraîné. Pour une espèce hors de ce périmètre, PlantAI retourne un résultat de
               confiance insuffisante plutôt qu'un diagnostic erroné.
             </div>
@@ -5010,291 +4889,6 @@ function App() {
       {page==="users" && userRole==="administrateur" && (
         <UsersAdminPage apiUrl={API_URL} authHeaders={authHeaders} currentUserId={userIdCourant}/>
       )}
-
-      {page==="projet" && (()=>{
-        const goto = id => { const el=document.getElementById(id); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); };
-        const toc = [
-          ["proj-s1","Contexte"],["proj-s2","Problématique"],["proj-s3","Objectif général"],
-          ["proj-s4","Objectifs spécifiques"],["proj-s5","Architecture"],["proj-s6","Technologies"],
-          ["proj-s7","Méthodologie"],["proj-s8","Algorithme"],["proj-s9","Maladies détectées"],
-          ["proj-s10","Intégration IoT"],["proj-s11","Résultats attendus"],["proj-s12","Perspectives"],
-          ["proj-mem","Plan de mémoire"]
-        ];
-        return (<>
-          <div className="proj-hero">
-            <div className="proj-hero-tag">📖 Documentation du projet</div>
-            <h1>Détection intelligente des maladies des plantes</h1>
-            <p>Un système basé sur l'intelligence artificielle, la vision par ordinateur et l'IoT pour détecter automatiquement les maladies des plantes à partir d'images de feuilles.</p>
-            <div className="proj-hero-meta">
-              <span className="proj-hero-chip">🤖 Deep Learning · CNN</span>
-              <span className="proj-hero-chip">📷 Vision par ordinateur</span>
-              <span className="proj-hero-chip">🌐 IoT · ESP32</span>
-              <span className="proj-hero-chip">🌱 Agriculture intelligente</span>
-            </div>
-          </div>
-
-          <div className="proj-toc">
-            {toc.map(([id,label],i)=>(
-              <div className="proj-toc-item" key={id} onClick={()=>goto(id)}>
-                <span className="proj-toc-num">{i+1}</span> {label}
-              </div>
-            ))}
-          </div>
-
-          {/* 1. Contexte */}
-          <div className="proj-section" id="proj-s1">
-            <div className="proj-section-head"><div className="proj-num">1</div><h2 className="proj-h">Contexte</h2></div>
-            <div className="proj-body">
-              L'agriculture joue un rôle essentiel dans l'économie de nombreux pays. Les maladies des plantes causent des <strong>pertes importantes de rendement et de qualité</strong>. La détection précoce des maladies permet de réduire les pertes et d'améliorer la productivité agricole.
-              <br/><br/>
-              Grâce à l'<strong>Intelligence Artificielle (IA)</strong>, à la <strong>vision par ordinateur</strong> et à l'<strong>Internet des Objets (IoT)</strong>, il est aujourd'hui possible d'automatiser la détection des maladies à partir d'images des feuilles.
-            </div>
-          </div>
-
-          {/* 2. Problématique */}
-          <div className="proj-section" id="proj-s2">
-            <div className="proj-section-head"><div className="proj-num">2</div><h2 className="proj-h">Problématique</h2></div>
-            <div className="proj-body" style={{marginBottom:14}}>
-              Les agriculteurs ont souvent des difficultés à identifier rapidement les maladies affectant leurs cultures.
-            </div>
-            <div className="proj-quote">« Comment développer un système intelligent capable de détecter automatiquement les maladies des plantes à partir d'images afin d'assister les agriculteurs dans leur prise de décision ? »</div>
-          </div>
-
-          {/* 3. Objectif général */}
-          <div className="proj-section" id="proj-s3">
-            <div className="proj-section-head"><div className="proj-num">3</div><h2 className="proj-h">Objectif général</h2></div>
-            <div className="proj-body">Développer un système intelligent basé sur l'intelligence artificielle permettant de <strong>détecter automatiquement les maladies des plantes</strong> à partir d'images de feuilles.</div>
-          </div>
-
-          {/* 4. Objectifs spécifiques */}
-          <div className="proj-section" id="proj-s4">
-            <div className="proj-section-head"><div className="proj-num">4</div><h2 className="proj-h">Objectifs spécifiques</h2></div>
-            <ul className="proj-list cols2">
-              <li>Collecter des images de plantes saines et malades.</li>
-              <li>Prétraiter les images.</li>
-              <li>Concevoir un modèle de Deep Learning pour la classification.</li>
-              <li>Identifier le type de maladie.</li>
-              <li>Fournir des recommandations de traitement.</li>
-              <li>Déployer le système sur une application web ou mobile.</li>
-            </ul>
-          </div>
-
-          {/* 5. Architecture */}
-          <div className="proj-section" id="proj-s5">
-            <div className="proj-section-head"><div className="proj-num">5</div><h2 className="proj-h">Architecture proposée</h2></div>
-            <div className="proj-flow">
-              <div className="proj-flow-box">📷 Caméra / Smartphone</div>
-              <div className="proj-flow-arrow">▼</div>
-              <div className="proj-flow-box">Acquisition d'image</div>
-              <div className="proj-flow-arrow">▼</div>
-              <div className="proj-flow-box">Prétraitement</div>
-              <div className="proj-flow-arrow">▼</div>
-              <div className="proj-flow-box accent">🧠 Réseau de neurones CNN</div>
-              <div className="proj-flow-arrow">▼</div>
-              <div className="proj-flow-split">
-                <div className="proj-flow-col"><div className="proj-flow-box healthy">🌱 Plante saine</div></div>
-                <div className="proj-flow-col">
-                  <div className="proj-flow-box sick">🦠 Plante malade</div>
-                  <div className="proj-flow-arrow">▼</div>
-                  <div className="proj-flow-box">Identification maladie</div>
-                  <div className="proj-flow-arrow">▼</div>
-                  <div className="proj-flow-box">Recommandation</div>
-                </div>
-              </div>
-              <div className="proj-flow-arrow">▼</div>
-              <div className="proj-flow-box accent">📱 Interface utilisateur</div>
-            </div>
-          </div>
-
-          {/* 6. Technologies */}
-          <div className="proj-section" id="proj-s6">
-            <div className="proj-section-head"><div className="proj-num">6</div><h2 className="proj-h">Technologies utilisées</h2></div>
-            <div className="proj-grid g3">
-              <div className="proj-card">
-                <div className="proj-card-title">🔧 Matériel</div>
-                <div className="proj-badges">
-                  <span className="proj-badge">Smartphone / Caméra</span>
-                  <span className="proj-badge">Raspberry Pi</span>
-                  <span className="proj-badge">ESP32-CAM</span>
-                </div>
-              </div>
-              <div className="proj-card">
-                <div className="proj-card-title">💻 Logiciels</div>
-                <div className="proj-badges">
-                  <span className="proj-badge green">Python</span>
-                  <span className="proj-badge green">TensorFlow</span>
-                  <span className="proj-badge green">Keras</span>
-                  <span className="proj-badge green">OpenCV</span>
-                  <span className="proj-badge green">Google Colab</span>
-                  <span className="proj-badge green">Jupyter Notebook</span>
-                </div>
-              </div>
-              <div className="proj-card">
-                <div className="proj-card-title">🗄️ Base de données</div>
-                <div className="proj-badges">
-                  <span className="proj-badge">MongoDB (NoSQL)</span>
-                  <span className="proj-badge">Firebase</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 7. Méthodologie */}
-          <div className="proj-section" id="proj-s7">
-            <div className="proj-section-head"><div className="proj-num">7</div><h2 className="proj-h">Méthodologie</h2></div>
-            <div className="proj-grid g3">
-              <div className="proj-card">
-                <div className="proj-card-title">Phase 1 · Collecte</div>
-                <div className="proj-body" style={{fontSize:"0.84rem"}}>
-                  Utilisation du <strong>PlantVillage Dataset</strong>.<br/>Cultures : Tomate, Pomme de terre, Maïs, Poivron, etc.
-                </div>
-              </div>
-              <div className="proj-card">
-                <div className="proj-card-title">Phase 2 · Prétraitement</div>
-                <div className="proj-body" style={{fontSize:"0.84rem"}}>
-                  Redimensionnement, normalisation, suppression du bruit.<br/>
-                  <strong>Augmentation :</strong> rotation, flip, zoom, brightness.
-                </div>
-              </div>
-              <div className="proj-card">
-                <div className="proj-card-title">Phase 3 · Entraînement</div>
-                <div className="proj-body" style={{fontSize:"0.84rem"}}>
-                  Réseau <strong>CNN</strong> : entrée 224×224 → Convolution → MaxPooling → Convolution → MaxPooling → Dense → Softmax.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 8. Algorithme */}
-          <div className="proj-section" id="proj-s8">
-            <div className="proj-section-head"><div className="proj-num">8</div><h2 className="proj-h">Algorithme</h2></div>
-            <div className="proj-code">
-              <span className="kw">Début</span><br/>
-              <span className="indent"><span className="fn">Capturer</span> image</span><br/>
-              <span className="indent"><span className="fn">Prétraiter</span> image</span><br/>
-              <span className="indent"><span className="fn">Charger</span> modèle CNN</span><br/>
-              <span className="indent"><span className="fn">Prédire</span> classe</span><br/>
-              <span className="indent"><span className="kw">Si</span> maladie détectée</span><br/>
-              <span className="indent" style={{paddingLeft:44}}>Afficher nom maladie</span><br/>
-              <span className="indent" style={{paddingLeft:44}}>Afficher traitement</span><br/>
-              <span className="indent"><span className="kw">Sinon</span></span><br/>
-              <span className="indent" style={{paddingLeft:44}}>Afficher plante saine</span><br/>
-              <span className="kw">Fin</span>
-            </div>
-          </div>
-
-          {/* 9. Maladies détectées */}
-          <div className="proj-section" id="proj-s9">
-            <div className="proj-section-head"><div className="proj-num">9</div><h2 className="proj-h">Exemple de maladies détectées</h2></div>
-            <table className="proj-table">
-              <thead><tr><th>Culture</th><th>Maladie</th></tr></thead>
-              <tbody>
-                <tr><td className="td-culture">🍅 Tomate</td><td>Early Blight</td></tr>
-                <tr><td className="td-culture">🍅 Tomate</td><td>Late Blight</td></tr>
-                <tr><td className="td-culture">🍅 Tomate</td><td>Leaf Mold</td></tr>
-                <tr><td className="td-culture">🥔 Pomme de terre</td><td>Early Blight</td></tr>
-                <tr><td className="td-culture">🥔 Pomme de terre</td><td>Late Blight</td></tr>
-                <tr><td className="td-culture">🌽 Maïs</td><td>Rust</td></tr>
-                <tr><td className="td-culture">🌽 Maïs</td><td>Cercospora</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* 10. IoT */}
-          <div className="proj-section" id="proj-s10">
-            <div className="proj-section-head"><div className="proj-num">10</div><h2 className="proj-h">Intégration IoT</h2></div>
-            <div className="proj-grid g2" style={{alignItems:"start"}}>
-              <div className="proj-flow">
-                <div className="proj-flow-box">🌡️ Capteurs — température · humidité · sol</div>
-                <div className="proj-flow-arrow">▼</div>
-                <div className="proj-flow-box accent">ESP32</div>
-                <div className="proj-flow-arrow">▼</div>
-                <div className="proj-flow-box">WiFi → MQTT</div>
-                <div className="proj-flow-arrow">▼</div>
-                <div className="proj-flow-box">☁️ Serveur Cloud</div>
-                <div className="proj-flow-arrow">▼</div>
-                <div className="proj-flow-box accent">🤖 Intelligence Artificielle</div>
-                <div className="proj-flow-arrow">▼</div>
-                <div className="proj-flow-box">📱 Application Mobile</div>
-              </div>
-              <div className="proj-card">
-                <div className="proj-card-title">📡 Protocoles</div>
-                <div className="proj-badges">
-                  <span className="proj-badge green">MQTT</span>
-                  <span className="proj-badge green">HTTP</span>
-                  <span className="proj-badge green">CoAP</span>
-                </div>
-                <div className="proj-body" style={{fontSize:"0.84rem",marginTop:14}}>
-                  Les capteurs environnementaux alimentent le modèle IA en données temps réel, permettant un suivi continu des conditions de culture.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 11. Résultats */}
-          <div className="proj-section" id="proj-s11">
-            <div className="proj-section-head"><div className="proj-num">11</div><h2 className="proj-h">Résultats attendus</h2></div>
-            <ul className="proj-list cols2">
-              <li>Détection automatique des maladies.</li>
-              <li>Réduction du temps de diagnostic.</li>
-              <li>Amélioration du rendement agricole.</li>
-              <li>Aide à la décision pour les agriculteurs.</li>
-            </ul>
-          </div>
-
-          {/* 12. Perspectives */}
-          <div className="proj-section" id="proj-s12">
-            <div className="proj-section-head"><div className="proj-num">12</div><h2 className="proj-h">Perspectives</h2></div>
-            <div className="proj-persp">
-              <div className="proj-persp-item">🚁 Utilisation de drones agricoles.</div>
-              <div className="proj-persp-item">⚡ Détection en temps réel par Edge AI.</div>
-              <div className="proj-persp-item">💬 Intégration de modèles LLM pour des conseils agricoles.</div>
-              <div className="proj-persp-item">📱 Déploiement sur smartphone Android.</div>
-              <div className="proj-persp-item">🌾 Surveillance de grandes exploitations agricoles.</div>
-            </div>
-          </div>
-
-          {/* Plan de mémoire */}
-          <div className="proj-section" id="proj-mem">
-            <div className="proj-section-head"><div className="proj-num">🎓</div><h2 className="proj-h">Plan de mémoire <span style={{fontSize:"0.8rem",fontWeight:600,color:"var(--text3)"}}>· Licence / Master / Certificat IoT</span></h2></div>
-            <div className="proj-chapter">
-              <div className="proj-chapter-num">1</div>
-              <div>
-                <div className="proj-chapter-title">Généralités sur les maladies des plantes</div>
-                <div className="proj-chapter-sub"><span>Agriculture intelligente</span><span>Types de maladies</span><span>Impacts économiques</span></div>
-              </div>
-            </div>
-            <div className="proj-chapter">
-              <div className="proj-chapter-num">2</div>
-              <div>
-                <div className="proj-chapter-title">Intelligence artificielle et Deep Learning</div>
-                <div className="proj-chapter-sub"><span>Machine Learning</span><span>CNN</span><span>Vision par ordinateur</span></div>
-              </div>
-            </div>
-            <div className="proj-chapter">
-              <div className="proj-chapter-num">3</div>
-              <div>
-                <div className="proj-chapter-title">Conception du système</div>
-                <div className="proj-chapter-sub"><span>Architecture matérielle</span><span>Architecture logicielle</span><span>Base de données</span></div>
-              </div>
-            </div>
-            <div className="proj-chapter">
-              <div className="proj-chapter-num">4</div>
-              <div>
-                <div className="proj-chapter-title">Réalisation et implémentation</div>
-                <div className="proj-chapter-sub"><span>Collecte des données</span><span>Entraînement du modèle</span><span>Tests et validation</span></div>
-              </div>
-            </div>
-            <div className="proj-chapter">
-              <div className="proj-chapter-num">5</div>
-              <div>
-                <div className="proj-chapter-title">Résultats et perspectives</div>
-                <div className="proj-chapter-sub"><span>Évaluation</span><span>Limites</span><span>Améliorations futures</span></div>
-              </div>
-            </div>
-          </div>
-        </>);
-      })()}
 
     </div>
 
@@ -5330,7 +4924,7 @@ function App() {
               <li onClick={()=>setPage("analyse")}>Analyser une plante</li>
               <li onClick={()=>setPage("history")}>Historique</li>
               <li onClick={()=>setPage("stats")}>Statistiques</li>
-              <li onClick={()=>setPage("projet")}>Projet · Documentation</li>
+              <li onClick={()=>setPage("maladies")}>Maladies détectées</li>
             </ul>
           </div>
 
@@ -5338,11 +4932,8 @@ function App() {
           <div>
             <div className="footer-col-title">🦠 Cultures supportées</div>
             <ul className="footer-links">
-              <li>Tomate · Pomme · Maïs</li>
-              <li>Vigne · Pomme de terre</li>
-              <li>Pêche · Poivron · Soja</li>
-              <li>Fraise · Cerise · Orange</li>
-              <li>Myrtille · Framboise · Courge</li>
+              <li>Tomate</li>
+              <li>Liste en cours de définition</li>
             </ul>
           </div>
 
@@ -5360,7 +4951,7 @@ function App() {
                   : <>○ ESP32-CAM hors ligne</>
                 }
               </li>
-              <li>38 classes PlantVillage</li>
+              <li>{catalogue.length ? `${catalogue.length + new Set(catalogue.map(r=>r.plante).filter(Boolean)).size} classes` : "Catalogue…"}</li>
               <li>Confiance moy. {avgConf}%</li>
               <li>{total} analyse{total>1?"s":""} enregistrée{total>1?"s":""}</li>
             </ul>
