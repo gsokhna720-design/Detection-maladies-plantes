@@ -14,9 +14,10 @@ import requests as http_requests
 from bson import ObjectId
 from bson.errors import InvalidId
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from auth import generate_token, get_current_user, hash_password, require_role, verify_password
 from database import (
@@ -37,6 +38,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Le frontend attend {"error": "..."} — FastAPI renvoie {"detail": "..."} par défaut."""
+    return JSONResponse(status_code=exc.status_code, content={'error': exc.detail})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Corps de requête invalide (422) — même format {"error": "..."} pour le frontend."""
+    first = exc.errors()[0] if exc.errors() else {}
+    field = '.'.join(str(p) for p in first.get('loc', []) if p != 'body')
+    message = f"{field} : {first.get('msg')}" if field else (first.get('msg') or 'Requête invalide')
+    return JSONResponse(status_code=422, content={'error': message})
 
 # ── Configuration uploads ──────────────────────────────────────────────────────
 UPLOAD_FOLDER      = 'uploads/'
