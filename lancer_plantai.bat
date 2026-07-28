@@ -24,8 +24,8 @@ if not exist "backend\.venv\Scripts\activate.bat" (
     exit /b 1
 )
 
-echo [1/3] Demarrage du backend (FastAPI)...
-start "PlantAI - Backend" cmd /k "cd /d "%~dp0backend" && call .venv\Scripts\activate && uvicorn app:app --reload"
+echo [1/3] Demarrage du backend (FastAPI, port 5000)...
+start "PlantAI - Backend" cmd /k "cd /d "%~dp0backend" && call .venv\Scripts\activate && uvicorn app:app --reload --port 5000"
 
 echo [2/3] Demarrage du frontend...
 start "PlantAI - Frontend" cmd /k "cd /d "%~dp0frontend" && python -m http.server 8080"

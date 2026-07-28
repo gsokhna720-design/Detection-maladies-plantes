@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PlantAI — Student Plant Monitor</title>
+  <title>PlantAI — Détection intelligente des maladies des plantes</title>
   <link rel="manifest" href="/manifest.json"/>
   <meta name="theme-color" content="#16a34a"/>
   <link rel="icon" href="/icons/favicon-32.png" sizes="32x32"/>
@@ -2002,6 +2002,12 @@ function useSensors() {
   return {s, hist};
 }
 
+/* Cultures cibles du mémoire (Technopole de Dakar) — à étendre une fois le
+   nouveau modèle entraîné sur les 7 cultures. Sert de filtre d'affichage
+   pour ne montrer que ce qui est pertinent, indépendamment du catalogue
+   PlantVillage complet encore chargé dans le backend. */
+const TARGET_CULTURES = ["Tomate"];
+
 /* ── Maladies détectables — données pour la page référence ── */
 const DISEASE_DB = [
   { culture:"Tomate 🍅", maladies:[
@@ -2015,60 +2021,6 @@ const DISEASE_DB = [
     { nom:"Virus jaunissement (TYLCV)", niveau:"critical", desc:"Maladie virale grave. Jaunissement et enroulement des feuilles.", traitement:"Aucun traitement curatif. Arracher et détruire les plants." },
     { nom:"Virus mosaïque",    niveau:"critical", desc:"Virus de la mosaïque du tabac. Marbré vert-jaune.",                traitement:"Éliminer les plants infectés. Désinfecter les outils." },
     { nom:"Saine",             niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Maintenir arrosage régulier et fertilisation NPK." },
-  ]},
-  { culture:"Pomme 🍎", maladies:[
-    { nom:"Tavelure",          niveau:"sick",     desc:"Venturia inaequalis. Taches olivâtres puis brun-noir sur feuilles.", traitement:"Fongicide cuivre ou captane dès le débourrement." },
-    { nom:"Pourriture noire",  niveau:"critical", desc:"Botryosphaeria obtusa. Anneaux concentriques noirs sur fruits.",    traitement:"Excision des parties atteintes. Fongicide systémique." },
-    { nom:"Rouille cédrière",  niveau:"sick",     desc:"Gymnosporangium. Taches orange vif sur face supérieure.",           traitement:"Myclobutanil au stade bouton rose. 2-3 traitements." },
-    { nom:"Saine",             niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Irrigation régulière. Fertilisation NPK équilibrée." },
-  ]},
-  { culture:"Pomme de terre 🥔", maladies:[
-    { nom:"Alternariose (mildiou précoce)", niveau:"sick", desc:"Alternaria solani. Taches brunes concentriques sur feuilles âgées.", traitement:"Chlorothalonil ou mancozèbe dès fermeture du couvert." },
-    { nom:"Mildiou",           niveau:"critical", desc:"Phytophthora infestans. Taches huileuses brun-violet. Fulgurante.", traitement:"URGENCE : métalaxyl + mancozèbe. Récolte rapide." },
-    { nom:"Saine",             niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Buttage régulier. Irrigation goutte-à-goutte." },
-  ]},
-  { culture:"Maïs 🌽", maladies:[
-    { nom:"Cercosporiose (Tache grise)", niveau:"sick", desc:"Cercospora zeae-maydis. Lésions rectangulaires gris-brun.",   traitement:"Triazole + strobilurine au stade 9-11 feuilles." },
-    { nom:"Rouille commune",   niveau:"sick",     desc:"Puccinia sorghi. Pustules brun-rouille ovales sur les deux faces.", traitement:"Fongicide triazole si pression forte avant floraison." },
-    { nom:"Helminthosporiose du Nord", niveau:"sick", desc:"Exserohilum turcicum. Grandes taches en forme de cigare.",      traitement:"Propiconazole ou azoxystrobine + propiconazole." },
-    { nom:"Sain",              niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Fertilisation azotée fractionnée." },
-  ]},
-  { culture:"Vigne 🍇", maladies:[
-    { nom:"Pourriture noire",  niveau:"critical", desc:"Guignardia bidwellii. Taches circulaires + baies momifiées.",       traitement:"Mancozèbe ou cuivre en préventif avant floraison." },
-    { nom:"Esca (Rougeot)",    niveau:"critical", desc:"Complexe fongique du bois. Tigré foliaire, apoplexie foudroyante.", traitement:"Aucun curatif. Protection plaies de taille avec mastic." },
-    { nom:"Brûlure des feuilles", niveau:"sick",  desc:"Pseudocercospora vitis. Taches angulaires brun-rougeâtre.",         traitement:"Cuivre + fongicide de contact. Éviter humidité stagnante." },
-    { nom:"Saine",             niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Surveillance mildiou/oïdium. Taille hivernale rigoureuse." },
-  ]},
-  { culture:"Pêche 🍑", maladies:[
-    { nom:"Tache bactérienne", niveau:"sick",     desc:"Xanthomonas arboricola. Petites taches aqueuses angulaires.",       traitement:"Oxychlorure de cuivre en préventif. Éviter aspersion." },
-    { nom:"Saine",             niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Éclaircissage des fruits. Protection contre la cloque." },
-  ]},
-  { culture:"Poivron 🫑", maladies:[
-    { nom:"Tache bactérienne", niveau:"sick",     desc:"Xanthomonas campestris. Lésions aqueuses à halo jaune puis nécrotiques.", traitement:"Cuivre + mancozèbe préventif. Kasugamycine si sévère." },
-    { nom:"Sain",              niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Tuteurage recommandé. Température optimale 18-30°C." },
-  ]},
-  { culture:"Orange 🍊", maladies:[
-    { nom:"Huanglongbing (HLB)", niveau:"critical", desc:"Candidatus Liberibacter. Mosaïque jaune-vert, fruits amers. INCURABLE.", traitement:"QUARANTAINE. Arrachage et destruction immédiate." },
-  ]},
-  { culture:"Cerise 🍒", maladies:[
-    { nom:"Oïdium",            niveau:"sick",     desc:"Podosphaera clandestina. Feutrage blanc poudreux sur jeunes pousses.", traitement:"Soufre mouillable ou bicarbonate. Aérer le feuillage." },
-    { nom:"Saine",             niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Taille après récolte. Protection filet anti-oiseaux." },
-  ]},
-  { culture:"Courge 🎃", maladies:[
-    { nom:"Oïdium",            niveau:"sick",     desc:"Podosphaera xanthii. Poudre blanche farineuse sur face supérieure.", traitement:"Soufre mouillable ou bicarbonate dilué. Aérer." },
-  ]},
-  { culture:"Fraise 🍓", maladies:[
-    { nom:"Brûlure des feuilles", niveau:"sick",  desc:"Diplocarpon earlianum. Petites taches pourpres sur feuilles.",      traitement:"Captane ou myclobutanil. Éliminer les feuilles infectées." },
-    { nom:"Saine",             niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Paillis conseillé. Renouveler plants tous les 3-4 ans." },
-  ]},
-  { culture:"Myrtille 🫐", maladies:[
-    { nom:"Saine",             niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Maintenir pH acide 4.5-5.5. Paillis de copeaux." },
-  ]},
-  { culture:"Framboise 🫐", maladies:[
-    { nom:"Saine",             niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Tailler cannes fruitées après récolte. Paillage." },
-  ]},
-  { culture:"Soja 🌱", maladies:[
-    { nom:"Sain",              niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Inoculation rhizobium recommandée." },
   ]},
 ];
 
@@ -2905,7 +2857,7 @@ function LoginPage({ onLogin /* onLogin(email) */ }) {
           </div>
 
           <div className="login-footer">
-            Projet Tutoré 2026 · Groupe IoT PlantAI<br/>
+            Mémoire de Licence 3 — 2026<br/>
             <span style={{color:"var(--green-dark)",fontWeight:700}}>ESP32-CAM · CNN · FastAPI · MongoDB</span>
           </div>
 
@@ -3670,6 +3622,9 @@ function App() {
       .then(data => setCatalogue(Array.isArray(data) ? data : []))
       .catch(() => setCatalogue([]));
   }, []);
+  // Catalogue restreint aux cultures cibles du mémoire — utilisé pour tous les
+  // chiffres affichés (voir TARGET_CULTURES).
+  const catalogueFiltre = catalogue.filter(r => TARGET_CULTURES.some(t => (r.plante||'').includes(t)));
 
   const openNote = (h) => { setNoteModal(h); setNoteDraft(h.note||""); };
   const saveNote = () => {
@@ -3924,7 +3879,7 @@ function App() {
               <div>
                 <div className="pd-name">{userName}</div>
                 <div className="pd-email">{userEmail}</div>
-                <span className="pd-role-badge">{userRole==="administrateur" ? "🛡️ Administrateur" : userRole==="maraicher" ? "🌾 Maraîcher" : "🎓 Projet Tutoré 2026"}</span>
+                <span className="pd-role-badge">{userRole==="administrateur" ? "🛡️ Administrateur" : userRole==="maraicher" ? "🌾 Maraîcher" : "🎓 Mémoire L3"}</span>
               </div>
             </div>
 
@@ -4453,7 +4408,7 @@ function App() {
           <div className="chart-card">
             <div className="cc-title" style={{marginBottom:"4px"}}>🧠 Diagnostic IA</div>
             <div className="cc-sub">
-              Modèle : CNN Keras (MobileNetV2) — {catalogue.length ? `${catalogue.length + new Set(catalogue.map(r=>r.plante).filter(Boolean)).size} classes` : "catalogue…"}
+              Modèle : CNN Keras (MobileNetV2) — {catalogueFiltre.length ? `${catalogueFiltre.length + new Set(catalogueFiltre.map(r=>r.plante).filter(Boolean)).size} classes` : "catalogue…"}
               {result?.label && <span style={{marginLeft:"6px",fontSize:"0.65rem",background:"#dcfce7",color:"#16a34a",borderRadius:"4px",padding:"1px 6px",fontWeight:700}}>CNN Keras</span>}
             </div>
 
@@ -4490,7 +4445,7 @@ function App() {
                         </div>
                         <div style={{background:"var(--green-pale)",border:"1.5px solid #a7f3c3",borderRadius:"12px",padding:"12px 14px",fontSize:"0.76rem",color:"var(--green-deep)",lineHeight:1.7}}>
                           {(() => {
-                            const cultures = [...new Set(catalogue.map(r=>r.plante).filter(Boolean))];
+                            const cultures = [...new Set(catalogueFiltre.map(r=>r.plante).filter(Boolean))];
                             return <>
                               <strong>{cultures.length || "?"} culture{cultures.length>1?"s":""} supportée{cultures.length>1?"s":""} :</strong><br/>
                               {cultures.length ? cultures.join(" · ") : "Chargement du catalogue…"}
@@ -4508,7 +4463,7 @@ function App() {
                             <div style={{fontSize:"0.76rem",color:"var(--text2)",lineHeight:1.6}}>
                               Architecture : <strong style={{color:"var(--text)"}}>CNN Keras (MobileNetV2)</strong><br/>
                               Dataset : <strong style={{color:"var(--text)"}}>PlantVillage</strong><br/>
-                              Classes : <strong style={{color:"var(--text)"}}>{catalogue.length ? catalogue.length + new Set(catalogue.map(r=>r.plante).filter(Boolean)).size : "…"}</strong>
+                              Classes : <strong style={{color:"var(--text)"}}>{catalogueFiltre.length ? catalogueFiltre.length + new Set(catalogueFiltre.map(r=>r.plante).filter(Boolean)).size : "…"}</strong>
                             </div>
                           </div>
                         </div>
@@ -4829,10 +4784,12 @@ function App() {
       {/* ════ PAGE MALADIES ════ */}
       {page==="maladies" && (()=>{
         // Chiffres calculés depuis le catalogue réel du backend (/recommandations),
-        // donc alignés automatiquement sur ce que le modèle CNN chargé sait reconnaître —
-        // jamais codés en dur. totalClasses = maladies + 1 classe "saine" par culture (approximation).
-        const totalMal = catalogue.length;
-        const totalCultures = new Set(catalogue.map(r=>r.plante).filter(Boolean)).size;
+        // filtré aux cultures cibles du mémoire (TARGET_CULTURES) — donc alignés
+        // automatiquement sur ce que le modèle sait reconnaître ET pertinent pour
+        // le sujet, jamais codés en dur. totalClasses = maladies + 1 classe "saine"
+        // par culture (approximation).
+        const totalMal = catalogueFiltre.length;
+        const totalCultures = new Set(catalogueFiltre.map(r=>r.plante).filter(Boolean)).size;
         const totalClasses  = totalMal + totalCultures;
         const open   = malOpen;
         const toggle = k => setMalOpen(p=>({...p,[k]:!p[k]}));
@@ -4951,7 +4908,7 @@ function App() {
                   : <>○ ESP32-CAM hors ligne</>
                 }
               </li>
-              <li>{catalogue.length ? `${catalogue.length + new Set(catalogue.map(r=>r.plante).filter(Boolean)).size} classes` : "Catalogue…"}</li>
+              <li>{catalogueFiltre.length ? `${catalogueFiltre.length + new Set(catalogueFiltre.map(r=>r.plante).filter(Boolean)).size} classes` : "Catalogue…"}</li>
               <li>Confiance moy. {avgConf}%</li>
               <li>{total} analyse{total>1?"s":""} enregistrée{total>1?"s":""}</li>
             </ul>
