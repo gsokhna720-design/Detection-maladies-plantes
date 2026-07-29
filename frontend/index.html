@@ -2002,27 +2002,11 @@ function useSensors() {
   return {s, hist};
 }
 
-/* Cultures cibles du mémoire (Technopole de Dakar) — à étendre une fois le
-   nouveau modèle entraîné sur les 7 cultures. Sert de filtre d'affichage
-   pour ne montrer que ce qui est pertinent, indépendamment du catalogue
-   PlantVillage complet encore chargé dans le backend. */
-const TARGET_CULTURES = ["Tomate"];
-
-/* ── Maladies détectables — données pour la page référence ── */
-const DISEASE_DB = [
-  { culture:"Tomate 🍅", maladies:[
-    { nom:"Tache bactérienne", niveau:"sick",     desc:"Xanthomonas spp. Taches aqueuses entourées d'un halo jaune.",     traitement:"Cuivre + mancozèbe dès les premiers symptômes." },
-    { nom:"Alternariose",      niveau:"sick",     desc:"Alternaria solani. Taches brunes concentriques en cible.",          traitement:"Chlorothalonil ou azoxystrobine. Feuilles basses à supprimer." },
-    { nom:"Mildiou",           niveau:"critical", desc:"Phytophthora infestans. Taches huileuses, duvet blanc. Contagieux.",traitement:"URGENCE : métalaxyl + cuivre. Arracher plants très atteints." },
-    { nom:"Moisissure (Cladosporiose)", niveau:"sick", desc:"Passalora fulva. Face sup. jaune, face inf. veloutée olive.",  traitement:"Mancozèbe ou chlorothalonil. Améliorer la ventilation." },
-    { nom:"Septoriose",        niveau:"sick",     desc:"Septoria lycopersici. Petites taches rondes avec centre pâle.",     traitement:"Chlorothalonil + éliminer feuilles infectées." },
-    { nom:"Acariens (Tétranyques)", niveau:"sick",desc:"Tetranychus urticae. Feuilles bronzées, toiles fines en dessous.", traitement:"Acaricide. Augmenter l'humidité ambiante." },
-    { nom:"Tache cible",       niveau:"sick",     desc:"Corynespora cassiicola. Anneaux concentriques brun-noirs.",         traitement:"Rotation cultures. Fongicide préventif (azoxystrobine)." },
-    { nom:"Virus jaunissement (TYLCV)", niveau:"critical", desc:"Maladie virale grave. Jaunissement et enroulement des feuilles.", traitement:"Aucun traitement curatif. Arracher et détruire les plants." },
-    { nom:"Virus mosaïque",    niveau:"critical", desc:"Virus de la mosaïque du tabac. Marbré vert-jaune.",                traitement:"Éliminer les plants infectés. Désinfecter les outils." },
-    { nom:"Saine",             niveau:"healthy",  desc:"Aucune anomalie détectée.",                                         traitement:"Maintenir arrosage régulier et fertilisation NPK." },
-  ]},
-];
+/* Le catalogue des maladies (page "Maladies") et les cultures cibles ne sont
+   plus codés en dur ici — ils viennent du backend en temps réel :
+     /cultures       → les 7 cultures cibles (IA disponible ou non)
+     /recommandations → le catalogue réel du modèle CNN chargé (voir plus bas,
+                         states `cultures` et `catalogue`). */
 
 /* ── TiltCard — effet 3D au survol ── */
 function TiltCard({ children, className, style, maxTilt }) {
@@ -2741,7 +2725,7 @@ function LoginPage({ onLogin /* onLogin(email) */ }) {
               <span className="login-feature-icon">🤖</span>
               <div className="login-feature-text">
                 <strong>Modèle CNN</strong>
-                <span>Détection précise sur dataset PlantVillage</span>
+                <span>Détection précise sur 5 cultures cibles</span>
               </div>
             </div>
             <div className="login-feature">
@@ -3345,6 +3329,12 @@ function App() {
   const fileRef = useRef();
   const {s:simSensors, hist:sHist} = useSensors();
 
+  // ── Culture sélectionnée pour l'analyse (7 cultures, 5 avec IA / 2 sans) ──
+  const [selectedCulture, setSelectedCulture] = useState("tomate");
+  const [obsNote,    setObsNote]    = useState("");
+  const [obsSending, setObsSending] = useState(false);
+  const [obsSent,    setObsSent]    = useState(false);
+
   // ── État ESP32-CAM ────────────────────────────────────────────────────────
   const [histFilter,       setHistFilter]       = useState("all");
   const [esp32Ip,          setEsp32Ip]          = useState(()=>localStorage.getItem('esp32Ip')||'');
@@ -3395,14 +3385,26 @@ function App() {
         if (!res.ok) return;
         const records = await res.json();
         if (!Array.isArray(records) || records.length === 0) return;
-        setHistory(records.map(r => ({
+        setHistory(records.map(r => r.type === 'manuelle' ? {
+          id:      r.id  || r._id || Date.now(),
+          dbId:    r._id || r.dbId || null,
+          type:    'manuelle',
+          culture: r.culture || 'Culture',
+          note:    r.note || '',
+          niveau:  'unknown',
+          maladie: `Observation manuelle — ${r.culture || ''}`,
+          score:   null,
+          image:   (r.image && r.image.nomImage) || r.image || null,
+          source:  r.source,
+          date:    new Date(r.date),
+        } : {
           ...transformBackendResponse(r),
           id:     r.id  || r._id || Date.now(),
           dbId:   r._id || r.dbId || null,
           image:  (r.image && r.image.nomImage) || r.image || 'image.jpg',
           source: r.source,
           date:   new Date(r.date),
-        })));
+        }));
       } catch(e) {
         console.warn('Historique MongoDB non disponible:', e.message);
       }
@@ -3508,11 +3510,12 @@ function App() {
     if (!imageFile) return;
     setLoading(true); setResult(null);
     try {
-      const fd = new FormData(); fd.append("image", imageFile);
+      const fd = new FormData(); fd.append("image", imageFile); fd.append("culture", selectedCulture);
       const res = await fetch(`${API_URL}/api/predict`, { method:"POST", headers: authHeaders, body:fd });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const raw = await res.json();
       if (raw.error) throw new Error(raw.error);
+      if (raw.iaDisponible === false) { showToast(`ℹ️ ${raw.message}`,"error"); return; }
       _handleAnalysisResult(transformBackendResponse(raw), fileName, "api");
     } catch(err) {
       console.warn("Backend inaccessible, mode démo :", err.message);
@@ -3530,11 +3533,12 @@ function App() {
       const res = await fetch(`${API_URL}/api/esp32/capture`, {
         method: 'POST',
         headers: {'Content-Type':'application/json', ...authHeaders},
-        body: JSON.stringify({ip: esp32Ip}),
+        body: JSON.stringify({ip: esp32Ip, culture: selectedCulture}),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const raw = await res.json();
       if (raw.error) throw new Error(raw.error);
+      if (raw.iaDisponible === false) { showToast(`ℹ️ ${raw.message}`,"error"); return; }
       setFileName('ESP32-CAM');
       setImageSrc(null);
       _handleAnalysisResult(transformBackendResponse(raw), 'ESP32-CAM', 'esp32');
@@ -3542,6 +3546,27 @@ function App() {
       showToast(`❌ ESP32 erreur : ${err.message}`,"error");
       console.error("ESP32 capture error:", err);
     } finally { setLoading(false); }
+  };
+
+  /* ── Signalement manuel (cultures sans IA — Persil, Menthe) ── */
+  const sendObservation = async () => {
+    if (!obsNote.trim()) { showToast("⚠️ Décrivez votre observation avant d'envoyer.","error"); return; }
+    setObsSending(true);
+    try {
+      const fd = new FormData();
+      fd.append("culture", selectedCulture);
+      fd.append("note", obsNote.trim());
+      if (imageFile) fd.append("image", imageFile);
+      const res = await fetch(`${API_URL}/api/observations`, { method:"POST", headers: authHeaders, body:fd });
+      const raw = await res.json();
+      if (!res.ok || raw.error) throw new Error(raw.error || `HTTP ${res.status}`);
+      setObsSent(true);
+      setObsNote("");
+      setImageSrc(null); setImageFile(null);
+      showToast("✅ Observation envoyée — merci pour votre signalement.","success");
+    } catch(err) {
+      showToast(`❌ Envoi impossible : ${err.message}`,"error");
+    } finally { setObsSending(false); }
   };
 
   /* Banner props */
@@ -3622,9 +3647,16 @@ function App() {
       .then(data => setCatalogue(Array.isArray(data) ? data : []))
       .catch(() => setCatalogue([]));
   }, []);
-  // Catalogue restreint aux cultures cibles du mémoire — utilisé pour tous les
-  // chiffres affichés (voir TARGET_CULTURES).
-  const catalogueFiltre = catalogue.filter(r => TARGET_CULTURES.some(t => (r.plante||'').includes(t)));
+
+  // ── Les 7 cultures cibles (5 avec IA, 2 sans) depuis le backend ──
+  const [cultures, setCultures] = useState([]);
+  useEffect(() => {
+    fetch(`${API_URL}/cultures`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setCultures(Array.isArray(data) ? data : []))
+      .catch(() => setCultures([]));
+  }, []);
+  const catalogueFiltre = catalogue;
 
   const openNote = (h) => { setNoteModal(h); setNoteDraft(h.note||""); };
   const saveNote = () => {
@@ -4279,13 +4311,67 @@ function App() {
       </>}
 
       {/* ════ ANALYSER ════ */}
-      {page==="analyse" && (
+      {page==="analyse" && (() => {
+        const selectedCultureInfo = cultures.find(c => c.id === selectedCulture) || null;
+        const iaOk = selectedCultureInfo ? selectedCultureInfo.iaDisponible : true;
+        return (
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px"}}>
 
           {/* ── Panneau gauche : source de l'image ── */}
           <div className="chart-card">
             <div className="cc-title" style={{marginBottom:"4px"}}>📷 Source de l'image</div>
             <div className="cc-sub">Upload manuel ou capture directe depuis l'ESP32-CAM</div>
+
+            {/* Sélecteur de culture — 7 cultures cibles */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:"6px",margin:"12px 0 14px"}}>
+              {cultures.map(c => (
+                <button key={c.id}
+                  onClick={()=>{ setSelectedCulture(c.id); setObsSent(false); setResult(null); }}
+                  style={{
+                    padding:"6px 12px", borderRadius:"20px",
+                    border: selectedCulture===c.id ? "2px solid var(--green)" : "1.5px solid var(--border)",
+                    background: selectedCulture===c.id ? "var(--green-pale)" : "var(--white)",
+                    fontWeight:700, fontSize:"0.78rem", cursor:"pointer",
+                    color: c.iaDisponible ? "var(--text)" : "var(--text3)",
+                  }}>
+                  {c.emoji} {c.nom}{!c.iaDisponible && " 🚧"}
+                </button>
+              ))}
+            </div>
+
+            {!iaOk ? (<>
+              {/* ── Culture sans diagnostic IA (Persil, Menthe) : message + signalement manuel ── */}
+              <div style={{background:"#fef9c3",border:"1.5px solid #f59e0b",borderRadius:"12px",padding:"14px 16px",marginBottom:"14px"}}>
+                <div style={{fontWeight:800,color:"#92400e",marginBottom:"6px"}}>🚧 Diagnostic IA non disponible — {selectedCultureInfo?.nom}</div>
+                <div style={{fontSize:"0.8rem",color:"#78350f",lineHeight:1.6}}>{selectedCultureInfo?.message}</div>
+              </div>
+
+              <div
+                className={`upload-zone ${dragOver?"over":""}`}
+                onDrop={e=>{e.preventDefault();setDragOver(false);loadImg(e.dataTransfer.files[0]);}}
+                onDragOver={e=>{e.preventDefault();setDragOver(true);}}
+                onDragLeave={()=>setDragOver(false)}
+                onClick={()=>fileRef.current.click()}
+              >
+                <input type="file" accept="image/*" ref={fileRef} onChange={e=>loadImg(e.target.files[0])}/>
+                {imageSrc
+                  ? <img src={imageSrc} className="preview-img" alt="Aperçu" style={{display:"block",width:"100%"}}/>
+                  : <><div className="uz-icon">📎</div><div className="uz-text"><p><strong>Photo optionnelle</strong><br/>jointe à l'observation, non analysée</p></div></>
+                }
+              </div>
+
+              <textarea
+                value={obsNote}
+                onChange={e=>setObsNote(e.target.value)}
+                placeholder="Décrivez ce que vous observez (taches, flétrissement, décoloration, insectes...)"
+                rows={4}
+                style={{width:"100%",marginTop:"10px",padding:"10px 12px",borderRadius:"10px",border:"1.5px solid var(--border)",fontFamily:"inherit",fontSize:"0.85rem",resize:"vertical",background:"var(--white)",color:"var(--text)"}}
+              />
+              <button className="btn-primary" onClick={sendObservation} disabled={obsSending || !obsNote.trim()} style={{marginTop:"10px"}}>
+                {obsSending?<><div className="spinner"/>Envoi…</>:<>📩 Signaler cette observation</>}
+              </button>
+              {obsSent && <p style={{fontSize:"0.75rem",color:"var(--green-dark)",marginTop:"8px",textAlign:"center"}}>✅ Observation envoyée — consultable dans l'historique.</p>}
+            </>) : (<>
 
             {/* Toggle Upload / ESP32 Camera */}
             <div className="cam-mode-toggle">
@@ -4402,6 +4488,7 @@ function App() {
                 Capture une photo instantanée depuis l'ESP32-CAM<br/>et lance l'analyse IA automatiquement.
               </p>
             </>}
+            </>)}
           </div>
 
           {/* ── Panneau droit : résultat IA ── */}
@@ -4412,7 +4499,14 @@ function App() {
               {result?.label && <span style={{marginLeft:"6px",fontSize:"0.65rem",background:"#dcfce7",color:"#16a34a",borderRadius:"4px",padding:"1px 6px",fontWeight:700}}>CNN Keras</span>}
             </div>
 
-            {!result&&!loading && <div className="result-idle"><Leaf3D niveau={null}/><p style={{marginTop:"6px"}}>Soumettez une image<br/>ou capturez depuis l'ESP32<br/>pour obtenir le diagnostic.</p></div>}
+            {!result&&!loading && (
+              <div className="result-idle">
+                <Leaf3D niveau={null}/>
+                {(cultures.find(c=>c.id===selectedCulture)?.iaDisponible ?? true)
+                  ? <p style={{marginTop:"6px"}}>Soumettez une image<br/>ou capturez depuis l'ESP32<br/>pour obtenir le diagnostic.</p>
+                  : <p style={{marginTop:"6px"}}>🚧 Pas de diagnostic IA pour cette culture.<br/>Utilisez le signalement manuel ci-contre.</p>}
+              </div>
+            )}
             {loading && (
               <div className="result-idle">
                 <span style={{fontSize:"2rem"}}>⚙️</span>
@@ -4462,7 +4556,7 @@ function App() {
                             <div style={{fontSize:"0.72rem",color:"var(--text3)",fontWeight:600,marginBottom:"4px",textTransform:"uppercase",letterSpacing:"1px"}}>Modèle IA</div>
                             <div style={{fontSize:"0.76rem",color:"var(--text2)",lineHeight:1.6}}>
                               Architecture : <strong style={{color:"var(--text)"}}>CNN Keras (MobileNetV2)</strong><br/>
-                              Dataset : <strong style={{color:"var(--text)"}}>PlantVillage</strong><br/>
+                              Dataset : <strong style={{color:"var(--text)"}}>Multi-sources (5 cultures)</strong><br/>
                               Classes : <strong style={{color:"var(--text)"}}>{catalogueFiltre.length ? catalogueFiltre.length + new Set(catalogueFiltre.map(r=>r.plante).filter(Boolean)).size : "…"}</strong>
                             </div>
                           </div>
@@ -4507,7 +4601,8 @@ function App() {
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ════ HISTORIQUE ════ */}
       {page==="history" && (() => {
@@ -4563,12 +4658,16 @@ function App() {
                         </td>
                         <td className="td-bold">{h.maladie}</td>
                         <td>
-                          <span style={{color:bcolor(h.niveau),fontWeight:800}}>{h.score}%</span>
-                          <div style={{background:"#f1f5f9",borderRadius:"4px",height:"4px",marginTop:"4px",width:"72px",overflow:"hidden"}}>
-                            <div style={{width:`${h.score}%`,height:"100%",borderRadius:"4px",background:bcolor(h.niveau)}}/>
-                          </div>
+                          {h.type==="manuelle"
+                            ? <span style={{color:"var(--text3)",fontSize:"0.72rem"}}>—</span>
+                            : <><span style={{color:bcolor(h.niveau),fontWeight:800}}>{h.score}%</span>
+                                <div style={{background:"#f1f5f9",borderRadius:"4px",height:"4px",marginTop:"4px",width:"72px",overflow:"hidden"}}>
+                                  <div style={{width:`${h.score}%`,height:"100%",borderRadius:"4px",background:bcolor(h.niveau)}}/>
+                                </div></>}
                         </td>
-                        <td><span className={`pill pill-${h.niveau}`}>{h.niveau==="healthy"?"✅ Saine":h.niveau==="sick"?"⚠️ Infectée":h.niveau==="unknown"?"❓ Non reconnue":"🚨 Critique"}</span></td>
+                        <td>{h.type==="manuelle"
+                          ? <span className="pill" style={{background:"#f3e8ff",color:"#7c3aed"}}>📩 Signalement manuel</span>
+                          : <span className={`pill pill-${h.niveau}`}>{h.niveau==="healthy"?"✅ Saine":h.niveau==="sick"?"⚠️ Infectée":h.niveau==="unknown"?"❓ Non reconnue":"🚨 Critique"}</span>}</td>
                         <td style={{color:"var(--text3)",fontSize:"0.72rem"}}>{fmtFull(h.date instanceof Date ? h.date : new Date(h.date))}</td>
                         <td>
                           <button className={`btn-note ${h.note?"has-note":""}`} onClick={()=>openNote(h)}>
@@ -4783,16 +4882,22 @@ function App() {
 
       {/* ════ PAGE MALADIES ════ */}
       {page==="maladies" && (()=>{
-        // Chiffres calculés depuis le catalogue réel du backend (/recommandations),
-        // filtré aux cultures cibles du mémoire (TARGET_CULTURES) — donc alignés
-        // automatiquement sur ce que le modèle sait reconnaître ET pertinent pour
-        // le sujet, jamais codés en dur. totalClasses = maladies + 1 classe "saine"
-        // par culture (approximation).
+        // Regroupe le catalogue réel du backend (/recommandations) par culture —
+        // aucune donnée codée en dur, tout vient du modèle CNN réellement chargé.
         const totalMal = catalogueFiltre.length;
         const totalCultures = new Set(catalogueFiltre.map(r=>r.plante).filter(Boolean)).size;
         const totalClasses  = totalMal + totalCultures;
         const open   = malOpen;
         const toggle = k => setMalOpen(p=>({...p,[k]:!p[k]}));
+
+        const parCulture = {};
+        catalogueFiltre.forEach(r => {
+          const key = r.plante || 'Autre';
+          (parCulture[key] = parCulture[key] || []).push(r);
+        });
+        const culturesAvecIA = cultures.filter(c => c.iaDisponible);
+        const culturesSansIA = cultures.filter(c => !c.iaDisponible);
+
         return (<>
           <div className="mal-intro">
             <h2>🦠 Maladies détectables par PlantAI</h2>
@@ -4808,22 +4913,27 @@ function App() {
             <span className="mal-legend-item"><span className="mal-niveau-dot sick"/><b>Malade (traitement possible)</b></span>
             <span className="mal-legend-item"><span className="mal-niveau-dot critical"/><b>Critique (action urgente)</b></span>
           </div>
-          {DISEASE_DB.map((cat,ci)=>(
-            <div className="mal-culture" key={ci}>
+          {culturesAvecIA.map((c,ci)=>{
+            const maladies = parCulture[`${c.nom} ${c.emoji}`] || parCulture[c.nom] || [];
+            return (
+            <div className="mal-culture" key={c.id}>
               <div className="mal-culture-head" onClick={()=>toggle(ci)}>
-                <span className="mal-culture-icon">{cat.culture.match(/\p{Emoji}/u)?.[0]||"🌿"}</span>
-                <span className="mal-culture-name">{cat.culture.replace(/\p{Emoji}/gu,"").trim()}</span>
-                <span className="mal-culture-count">{cat.maladies.length} classe{cat.maladies.length>1?"s":""}</span>
+                <span className="mal-culture-icon">{c.emoji}</span>
+                <span className="mal-culture-name">{c.nom}</span>
+                <span className="mal-culture-count">{maladies.length} maladie{maladies.length>1?"s":""}</span>
                 <span className={`mal-culture-chevron ${open[ci]?"open":""}`}>▶</span>
               </div>
               {open[ci] && (
                 <div className="mal-disease-list">
-                  {cat.maladies.map((m,mi)=>(
+                  {maladies.length === 0 && (
+                    <div className="mal-disease-row"><div className="mal-disease-info"><div className="mal-disease-desc">Catalogue en cours de chargement…</div></div></div>
+                  )}
+                  {maladies.map((m,mi)=>(
                     <div className="mal-disease-row" key={mi}>
                       <span className={`mal-niveau-dot ${m.niveau}`}/>
                       <div className="mal-disease-info">
-                        <div className="mal-disease-name">{m.nom}</div>
-                        <div className="mal-disease-desc">{m.desc}</div>
+                        <div className="mal-disease-name">{m.maladie}</div>
+                        <div className="mal-disease-desc">{m.description}</div>
                         <div className={`mal-treatment ${m.niveau}`}>💊 {m.traitement}</div>
                       </div>
                     </div>
@@ -4831,7 +4941,30 @@ function App() {
                 </div>
               )}
             </div>
+          )})}
+
+          {culturesSansIA.length > 0 && (
+            <div className="mal-intro" style={{marginTop:18}}>
+              <h2 style={{fontSize:"1.05rem"}}>🚧 Cultures sans diagnostic automatique (pour l'instant)</h2>
+            </div>
+          )}
+          {culturesSansIA.map(c => (
+            <div className="mal-culture" key={c.id} style={{opacity:0.85}}>
+              <div className="mal-culture-head" style={{cursor:"default"}}>
+                <span className="mal-culture-icon">{c.emoji}</span>
+                <span className="mal-culture-name">{c.nom}</span>
+                <span className="mal-culture-count" style={{background:"#f3e8ff",color:"#7c3aed"}}>Pas d'IA</span>
+              </div>
+              <div className="mal-disease-list">
+                <div className="mal-disease-row">
+                  <div className="mal-disease-info">
+                    <div className="mal-disease-desc">{c.message}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           ))}
+
           <div style={{background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",borderRadius:14,padding:"20px 24px",marginTop:8,color:"#fff"}}>
             <div style={{fontWeight:800,fontSize:"1rem",marginBottom:6}}>🧠 Modèle CNN Keras (MobileNetV2)</div>
             <div style={{fontSize:"0.84rem",opacity:.9,lineHeight:1.6}}>

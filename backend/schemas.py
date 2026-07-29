@@ -38,3 +38,4 @@ class SensorData(BaseModel):
 
 class ESP32CaptureRequest(BaseModel):
     ip: Optional[str] = None
+    culture: str = 'tomate'

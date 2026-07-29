@@ -14,12 +14,13 @@ import requests as http_requests
 from bson import ObjectId
 from bson.errors import InvalidId
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from auth import generate_token, get_current_user, hash_password, require_role, verify_password
+from cultures import CULTURES, get_culture
 from database import (
     get_analyses_col, get_capteurs_col, get_db, get_recommandations_col, get_utilisateurs_col, serialize,
 )
@@ -72,14 +73,15 @@ def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def _predict_cnn(img_path: str) -> dict:
+def _predict_cnn(img_path: str, allowed_prefixes: list = None) -> dict:
     """Import paresseux du CNN Keras (ia/model.py) : ne bloque pas le démarrage
-    de l'API si TensorFlow / le modèle entraîné ne sont pas encore disponibles."""
+    de l'API si TensorFlow / le modèle entraîné ne sont pas encore disponibles.
+    allowed_prefixes restreint la prédiction aux classes de la culture choisie."""
     ia_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ia')
     if ia_dir not in sys.path:
         sys.path.insert(0, ia_dir)
     from model import predict_image
-    return predict_image(img_path)
+    return predict_image(img_path, allowed_prefixes=allowed_prefixes)
 
 
 def _enrich_prediction(raw: dict) -> dict:
@@ -93,7 +95,7 @@ def _enrich_prediction(raw: dict) -> dict:
             'niveau':      'unknown',
             'description': f"Détection : {label}" if label else "Aucune détection.",
             'traitement':  'Non applicable.',
-            'conseil':     'Résultat non référencé dans le catalogue PlantVillage.',
+            'conseil':     'Résultat non référencé dans le catalogue.',
         }
     else:
         disease_info = dict(info)
@@ -204,7 +206,9 @@ def home():
         'endpoints': {
             '/auth/login':           'POST  — Connexion (email + motDePasse) → token + rôle',
             '/auth/logout':          'POST  — Déconnexion (authentifié)',
-            '/api/predict':          'POST  — Analyser une image (CNN Keras, seul pipeline IA)',
+            '/cultures':             'GET   — Les 7 cultures cibles (IA disponible ou non)',
+            '/api/predict':          'POST  — Analyser une image (image + culture) — CNN Keras',
+            '/api/observations':     'POST  — Signalement manuel (cultures sans IA : Persil, Menthe)',
             '/api/esp32/status':     'GET   — Vérifier la connexion ESP32-CAM',
             '/api/esp32/capture':    'POST  — Capturer depuis ESP32-CAM et analyser',
             '/api/esp32/stream':     'GET   — Proxy du flux MJPEG ESP32',
@@ -268,8 +272,21 @@ def logout(current_user: dict = Depends(get_current_user)):
 @app.post('/api/predict')
 def predict(
     image: UploadFile = File(...),
+    culture: str = Form(...),
     current_user: dict = Depends(require_role('maraicher')),
 ):
+    culture_info = get_culture(culture)
+    if culture_info is None:
+        raise HTTPException(status_code=400, detail='Culture inconnue')
+
+    if not culture_info['iaDisponible']:
+        # Persil / Menthe (pour l'instant) : pas de modèle chargé, message explicite.
+        return {
+            'iaDisponible': False,
+            'culture':      culture_info['nom'],
+            'message':      culture_info['message'],
+        }
+
     if image.filename == '':
         raise HTTPException(status_code=400, detail='Nom de fichier vide')
     if not allowed_file(image.filename):
@@ -286,8 +303,9 @@ def predict(
 
     try:
         image_doc, img_path = _persist_image_file(tmp_path, filename)
-        raw = _predict_cnn(img_path)
+        raw = _predict_cnn(img_path, allowed_prefixes=[culture_info['prefixe']])
         result = _enrich_prediction(raw)
+        result['iaDisponible'] = True
     except ModuleNotFoundError:
         raise HTTPException(status_code=503, detail="Modèle CNN indisponible — installez requirements.txt (tensorflow)")
     except FileNotFoundError as e:
@@ -298,6 +316,7 @@ def predict(
 
     entry = {
         **result,
+        'culture': culture_info['nom'],
         'image':   image_doc,
         'source':  'api',
         'date':    datetime.now(timezone.utc),
@@ -374,6 +393,16 @@ def esp32_capture(
     if not ip:
         raise HTTPException(status_code=400, detail='Adresse IP ESP32 non fournie')
 
+    culture_info = get_culture(payload.culture)
+    if culture_info is None:
+        raise HTTPException(status_code=400, detail='Culture inconnue')
+    if not culture_info['iaDisponible']:
+        return {
+            'iaDisponible': False,
+            'culture':      culture_info['nom'],
+            'message':      culture_info['message'],
+        }
+
     capture_url = f'http://{ip}/capture'
     try:
         r = http_requests.get(capture_url, timeout=ESP32_CAPTURE_TIMEOUT)
@@ -386,8 +415,9 @@ def esp32_capture(
             tmp_path = f.name
 
         image_doc, img_path = _persist_image_file(tmp_path, f'ESP32-CAM_{ip}.jpg')
-        raw = _predict_cnn(img_path)
+        raw = _predict_cnn(img_path, allowed_prefixes=[culture_info['prefixe']])
         result = _enrich_prediction(raw)
+        result['iaDisponible'] = True
         result['source']   = 'esp32'
         result['esp32_ip'] = ip
 
@@ -409,6 +439,7 @@ def esp32_capture(
 
     entry = {
         **result,
+        'culture': culture_info['nom'],
         'image':   image_doc,
         'date':    datetime.now(timezone.utc),
         'userId':  current_user['idUtilisateur'],
@@ -668,6 +699,58 @@ def get_image(analyse_id: str):
     if not os.path.exists(chemin):
         raise HTTPException(status_code=404, detail='Image introuvable')
     return FileResponse(chemin)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── CULTURES CIBLES (7) — avec ou sans diagnostic IA ──────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+@app.get('/cultures')
+def list_cultures():
+    return CULTURES
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── SIGNALEMENT MANUEL (cultures sans IA — Persil, Menthe) ────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+@app.post('/api/observations', status_code=201)
+def create_observation(
+    culture: str = Form(...),
+    note: str = Form(...),
+    image: UploadFile = File(None),
+    current_user: dict = Depends(require_role('maraicher')),
+):
+    culture_info = get_culture(culture)
+    if culture_info is None:
+        raise HTTPException(status_code=400, detail='Culture inconnue')
+    if not note.strip():
+        raise HTTPException(status_code=400, detail='La note est requise')
+
+    image_doc = None
+    if image is not None and image.filename:
+        if not allowed_file(image.filename):
+            raise HTTPException(status_code=400, detail='Format non autorisé. Acceptés : png, jpg, jpeg, gif, webp')
+        contents = image.file.read()
+        if len(contents) > MAX_CONTENT_LENGTH:
+            raise HTTPException(status_code=413, detail='Fichier trop volumineux. Maximum : 16 Mo')
+        filename = os.path.basename(image.filename)
+        tmp_path = os.path.join(UPLOAD_FOLDER, f"tmp_{uuid.uuid4().hex}_{filename}")
+        with open(tmp_path, 'wb') as f:
+            f.write(contents)
+        image_doc, _ = _persist_image_file(tmp_path, filename)
+
+    entry = {
+        'type':    'manuelle',
+        'culture': culture_info['nom'],
+        'note':    note.strip(),
+        'image':   image_doc,
+        'source':  'manuel',
+        'date':    datetime.now(timezone.utc),
+        'userId':  current_user['idUtilisateur'],
+    }
+    db_id = _save_analysis(entry)
+    if db_id is None:
+        raise HTTPException(status_code=503, detail='Base de données indisponible')
+    return {'ok': True, 'idAnalyse': db_id}
 
 
 # ══════════════════════════════════════════════════════════════════════════════

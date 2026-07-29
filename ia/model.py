@@ -40,8 +40,13 @@ def _load_class_names():
     return _class_names
 
 
-def predict_image(image_path):
-    """Charge le modèle entraîné et prédit la maladie sur l'image donnée."""
+def predict_image(image_path, allowed_prefixes=None):
+    """Charge le modèle entraîné et prédit la maladie sur l'image donnée.
+
+    allowed_prefixes : si fourni (ex. ["Tomato"]), la prédiction est restreinte
+    aux classes de ce préfixe (ex. "Tomato___Late_blight") — utilisé pour ne
+    renvoyer que des diagnostics cohérents avec la culture sélectionnée par
+    l'utilisateur, même si le modèle couvre plusieurs cultures."""
     model = _load_model()
     class_names = _load_class_names()
 
@@ -49,7 +54,15 @@ def predict_image(image_path):
     batch = np.expand_dims(np.array(img, dtype=np.float32), axis=0)
 
     probs = model.predict(batch, verbose=0)[0]
-    idx = int(np.argmax(probs))
+
+    if allowed_prefixes:
+        indices = [i for i, c in enumerate(class_names) if c.split('___')[0] in allowed_prefixes]
+        if not indices:
+            raise ValueError(f"Aucune classe entraînée pour : {allowed_prefixes}")
+    else:
+        indices = range(len(class_names))
+
+    idx = max(indices, key=lambda i: probs[i])
 
     return {
         'maladie':   class_names[idx],

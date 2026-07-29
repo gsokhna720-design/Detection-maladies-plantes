@@ -1,7 +1,7 @@
 """
 Seed — peuple la collection MongoDB "recommandations" à partir du catalogue
-PlantVillage (disease_catalog.CLASS_INFO). La maladie est un champ de chaque
-document "recommandations" (pas de collection "maladies" séparée).
+des 5 cultures cibles (disease_catalog.CLASS_INFO). La maladie est un champ
+de chaque document "recommandations" (pas de collection "maladies" séparée).
 
 Modèle :
   recommandations : { codeLabel, plante, maladie, niveau, description,
@@ -77,7 +77,12 @@ def main():
         else:
             created += 1
 
-    print(f"Recommandations créées : {created} | mises à jour : {updated} | ignorées (saines) : {skipped}")
+    # Nettoyage : retire les entrées d'un ancien catalogue qui ne correspondent
+    # plus à aucune classe actuelle (ex. anciennes cultures PlantVillage retirées).
+    valid_labels = [c for c, info in CLASS_INFO.items() if info.get('maladie')]
+    removed = col.delete_many({'codeLabel': {'$nin': valid_labels}}).deleted_count
+
+    print(f"Recommandations créées : {created} | mises à jour : {updated} | ignorées (saines) : {skipped} | obsolètes retirées : {removed}")
     print(f"Total en base — recommandations : {col.count_documents({})}")
 
 

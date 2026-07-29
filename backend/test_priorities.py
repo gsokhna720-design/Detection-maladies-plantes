@@ -253,5 +253,61 @@ check("donnée déjà rattachée à une autre analyse → non écrasée",
       already_doc.get('analyseId') == 'une-autre-analyse')
 
 # ══════════════════════════════════════════════════════════════════════════════
+print("\n=== ÉTAPE 5 — Cultures cibles (5 avec IA / 2 sans IA) ===")
+
+r = client.get('/cultures')
+data = r.json()
+check("GET /cultures → 200, 7 cultures", r.status_code == 200 and len(data) == 7)
+ia_ids = {c['id'] for c in data if c['iaDisponible']}
+sans_ia_ids = {c['id'] for c in data if not c['iaDisponible']}
+check("5 cultures avec IA", ia_ids == {'tomate', 'aubergine', 'salade', 'oignon_vert', 'aloe_vera'})
+check("2 cultures sans IA (persil, menthe)", sans_ia_ids == {'persil', 'menthe'})
+check("les cultures sans IA ont un message explicite",
+      all(c.get('message') for c in data if not c['iaDisponible']))
+
+# /api/predict sur une culture sans IA → message clair, pas d'appel au modèle
+fake_img = os.path.join(app_module.UPLOAD_FOLDER, 'persil_test.jpg')
+os.makedirs(app_module.UPLOAD_FOLDER, exist_ok=True)
+with open(fake_img, 'wb') as f:
+    f.write(b'\xff\xd8\xff\xe0FAKEJPEGDATA')
+
+with open(fake_img, 'rb') as f:
+    r = client.post('/api/predict', headers={'Authorization': f'Bearer {marai_token}'},
+                     data={'culture': 'persil'}, files={'image': ('persil_test.jpg', f, 'image/jpeg')})
+check("POST /api/predict culture=persil → 200, iaDisponible=False",
+      r.status_code == 200 and r.json().get('iaDisponible') is False and r.json().get('message'))
+
+with open(fake_img, 'rb') as f:
+    r = client.post('/api/predict', headers={'Authorization': f'Bearer {marai_token}'},
+                     data={'culture': 'inconnue_xyz'}, files={'image': ('x.jpg', f, 'image/jpeg')})
+check("POST /api/predict culture inconnue → 400", r.status_code == 400)
+
+os.remove(fake_img)
+
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n=== ÉTAPE 6 — Signalement manuel (Persil / Menthe) ===")
+
+r = client.post('/api/observations', data={'culture': 'menthe', 'note': 'Taches jaunes sur les feuilles.'})
+check("POST /api/observations sans token → 401", r.status_code == 401)
+
+r = client.post('/api/observations', headers={'Authorization': f'Bearer {marai_token}'},
+                 data={'culture': 'menthe', 'note': 'Taches jaunes sur les feuilles.'})
+check("POST /api/observations sans image (201)", r.status_code == 201)
+obs_id = r.json().get('idAnalyse')
+check("idAnalyse renvoyé", bool(obs_id))
+
+obs_doc = mock_db['analyses'].find_one({'_id': ObjectId(obs_id)})
+check("document sauvegardé avec type='manuelle'", obs_doc is not None and obs_doc.get('type') == 'manuelle')
+check("document sans champ 'maladie' (pas un diagnostic IA)", 'maladie' not in obs_doc or obs_doc.get('maladie') is None)
+
+r = client.post('/api/observations', headers={'Authorization': f'Bearer {marai_token}'},
+                 data={'culture': 'menthe', 'note': '   '})
+check("note vide → 400", r.status_code == 400)
+
+r = client.post('/api/observations', headers={'Authorization': f'Bearer {marai_token}'},
+                 data={'culture': 'xyz', 'note': 'test'})
+check("culture inconnue → 400", r.status_code == 400)
+
+# ══════════════════════════════════════════════════════════════════════════════
 print(f"\n{'='*50}\nRésultat : {passed} réussis / {failed} échoués\n{'='*50}")
 sys.exit(1 if failed else 0)
