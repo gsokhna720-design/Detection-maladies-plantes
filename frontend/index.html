@@ -2762,7 +2762,7 @@ function LoginPage({ onLogin /* onLogin(email) */ }) {
             <div className="login-logo-icon">🌿</div>
             <div className="login-logo-text">
               <h1>PlantAI</h1>
-              <p>Student Plant Monitor</p>
+              <p>Détection intelligente des maladies</p>
             </div>
           </div>
 
@@ -3843,7 +3843,7 @@ function App() {
       <div className="nav-brand">
         <div className="nav-logo">🌿</div>
         <div>
-          <div className="nav-title">Student Plant Monitor</div>
+          <div className="nav-title">PlantAI</div>
           <div className="nav-subtitle">Détection intelligente des maladies</div>
         </div>
       </div>
@@ -5022,8 +5022,10 @@ function App() {
           <div>
             <div className="footer-col-title">🦠 Cultures supportées</div>
             <ul className="footer-links">
-              <li>Tomate</li>
-              <li>Liste en cours de définition</li>
+              {cultures.length === 0 && <li>Chargement…</li>}
+              {cultures.map(c => (
+                <li key={c.id}>{c.emoji} {c.nom} {c.iaDisponible ? "— IA active" : "— sans IA"}</li>
+              ))}
             </ul>
           </div>
 
