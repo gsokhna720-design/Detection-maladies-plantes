@@ -3316,7 +3316,7 @@ function App() {
   };
 
   const authHeaders = authToken ? {'Authorization': `Bearer ${authToken}`} : {};
-  const [darkMode,  setDarkMode]   = useState(false);
+  const [darkMode,  setDarkMode]   = useState(() => localStorage.getItem("plantai_darkMode") === "1");
   const [page,setPage]           = useState("dashboard");
   const [imageSrc,setImageSrc]   = useState(null);
   const [imageFile,setImageFile] = useState(null);
@@ -3372,7 +3372,10 @@ function App() {
   const sensors = realSensors || simSensors;
 
   useEffect(()=>{ const id=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(id); },[]);
-  useEffect(()=>{ document.body.classList.toggle("dark", darkMode); },[darkMode]);
+  useEffect(()=>{
+    document.body.classList.toggle("dark", darkMode);
+    localStorage.setItem("plantai_darkMode", darkMode ? "1" : "0");
+  },[darkMode]);
 
   // ── Chargement de l'historique depuis MongoDB au démarrage ───────────────
   // Authentifié → /history (analyses de l'utilisateur connecté, ou toutes si admin)
