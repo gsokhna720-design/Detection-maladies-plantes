@@ -3515,6 +3515,11 @@ function App() {
     try {
       const fd = new FormData(); fd.append("image", imageFile); fd.append("culture", selectedCulture);
       const res = await fetch(`${API_URL}/api/predict`, { method:"POST", headers: authHeaders, body:fd });
+      if (res.status === 401) {
+        handleLogout();
+        showToast("🔒 Session expirée — reconnectez-vous pour analyser une image.","error");
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const raw = await res.json();
       if (raw.error) throw new Error(raw.error);
@@ -3538,6 +3543,11 @@ function App() {
         headers: {'Content-Type':'application/json', ...authHeaders},
         body: JSON.stringify({ip: esp32Ip, culture: selectedCulture}),
       });
+      if (res.status === 401) {
+        handleLogout();
+        showToast("🔒 Session expirée — reconnectez-vous pour utiliser l'ESP32-CAM.","error");
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const raw = await res.json();
       if (raw.error) throw new Error(raw.error);
@@ -3561,6 +3571,11 @@ function App() {
       fd.append("note", obsNote.trim());
       if (imageFile) fd.append("image", imageFile);
       const res = await fetch(`${API_URL}/api/observations`, { method:"POST", headers: authHeaders, body:fd });
+      if (res.status === 401) {
+        handleLogout();
+        showToast("🔒 Session expirée — reconnectez-vous pour envoyer une observation.","error");
+        return;
+      }
       const raw = await res.json();
       if (!res.ok || raw.error) throw new Error(raw.error || `HTTP ${res.status}`);
       setObsSent(true);
