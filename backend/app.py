@@ -63,8 +63,10 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ── Configuration ESP32 ────────────────────────────────────────────────────────
 ESP32_DEFAULT_IP      = os.getenv('ESP32_IP', '')
-ESP32_CONNECT_TIMEOUT = 8
-ESP32_CAPTURE_TIMEOUT = 8
+ESP32_CONNECT_TIMEOUT = int(os.getenv('ESP32_CONNECT_TIMEOUT', '8'))
+# La capture (déclenchement + exposition + envoi JPEG) peut prendre plus de temps
+# que le simple test de connexion, notamment en WiFi faible — délai plus large.
+ESP32_CAPTURE_TIMEOUT = int(os.getenv('ESP32_CAPTURE_TIMEOUT', '20'))
 
 SENSOR_LINK_WINDOW_SECONDS = 120
 

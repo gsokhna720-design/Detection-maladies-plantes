@@ -3546,18 +3546,20 @@ function App() {
       });
       if (res.status === 401) {
         handleLogout();
+        setEsp32CapturedImg(null);
         showToast("🔒 Session expirée — reconnectez-vous pour utiliser l'ESP32-CAM.","error");
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const raw = await res.json();
       if (raw.error) throw new Error(raw.error);
-      if (raw.iaDisponible === false) { showToast(`ℹ️ ${raw.message}`,"error"); return; }
+      if (raw.iaDisponible === false) { setEsp32CapturedImg(null); showToast(`ℹ️ ${raw.message}`,"error"); return; }
       setFileName('ESP32-CAM');
       setImageSrc(null);
       setEsp32CapturedImg(raw.idAnalyse ? `${API_URL}/images/${raw.idAnalyse}` : null);
       _handleAnalysisResult(transformBackendResponse(raw), 'ESP32-CAM', 'esp32');
     } catch(err) {
+      setEsp32CapturedImg(null);
       showToast(`❌ ESP32 erreur : ${err.message}`,"error");
       console.error("ESP32 capture error:", err);
     } finally { setLoading(false); }
