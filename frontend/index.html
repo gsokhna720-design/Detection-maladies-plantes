@@ -3341,6 +3341,7 @@ function App() {
   const [esp32Connected,   setEsp32Connected]   = useState(false);
   const [esp32Checking,    setEsp32Checking]    = useState(false);
   const [esp32Mode,        setEsp32Mode]        = useState(false);  // false=upload true=cam
+  const [esp32CapturedImg, setEsp32CapturedImg] = useState(null);   // aperçu de la dernière photo capturée par l'ESP32-CAM
   const [esp32SettingsOpen,setEsp32SettingsOpen]= useState(false);
   const [esp32IpDraft,     setEsp32IpDraft]     = useState('');
   const [esp32TestMsg,     setEsp32TestMsg]     = useState(null);  // {ok,msg}
@@ -3554,6 +3555,7 @@ function App() {
       if (raw.iaDisponible === false) { showToast(`ℹ️ ${raw.message}`,"error"); return; }
       setFileName('ESP32-CAM');
       setImageSrc(null);
+      setEsp32CapturedImg(raw.idAnalyse ? `${API_URL}/images/${raw.idAnalyse}` : null);
       _handleAnalysisResult(transformBackendResponse(raw), 'ESP32-CAM', 'esp32');
     } catch(err) {
       showToast(`❌ ESP32 erreur : ${err.message}`,"error");
@@ -4489,6 +4491,14 @@ function App() {
                   </button>
                 )}
               </div>
+
+              {/* Dernière photo capturée et analysée */}
+              {esp32CapturedImg && !loading && (
+                <div style={{marginBottom:"10px"}}>
+                  <div style={{fontSize:"0.72rem",color:"var(--text3)",marginBottom:"4px",fontWeight:700}}>📸 Photo capturée et analysée :</div>
+                  <img src={esp32CapturedImg} alt="Photo capturée par l'ESP32-CAM" style={{width:"100%",borderRadius:"10px",border:"1.5px solid var(--border)",display:"block"}}/>
+                </div>
+              )}
 
               {/* Bouton capturer */}
               <button
