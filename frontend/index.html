@@ -3347,29 +3347,37 @@ function App() {
   const [esp32TestMsg,     setEsp32TestMsg]     = useState(null);  // {ok,msg}
   const [esp32Testing,     setEsp32Testing]     = useState(false);
 
-  // ── Capteurs IoT réels (ESP32 DHT11) — remplace la simulation si connecté ─
+  // ── Capteurs IoT réels (ESP32 DevKit — DHT11 + humidité sol) ──────────────
+  // Lit la dernière mesure enregistrée en base (collection "capteurs", alimentée
+  // par les POST /sensors/data du DevKit) — l'ESP32 DevKit (capteurs) est un
+  // appareil physique distinct de l'ESP32-CAM (photo) : ce polling ne dépend donc
+  // pas de esp32Connected/esp32Ip, qui ne concernent que la caméra.
   const [realSensors,  setRealSensors]  = useState(null);
   const [sensorsReal,  setSensorsReal]  = useState(false); // true = données réelles
   useEffect(()=>{
-    if (!esp32Connected || !esp32Ip) { setRealSensors(null); setSensorsReal(false); return; }
+    if (!authToken) { setRealSensors(null); setSensorsReal(false); return; }
+    let stopped = false;
     const pull = () =>
-      fetch(`${API_URL}/api/esp32/sensors?ip=${encodeURIComponent(esp32Ip)}`)
-        .then(r=>r.ok?r.json():null)
-        .then(d=>{
-          if (d && d.ok && d.temp !== -1) {
-            setRealSensors(p=>({
-              temp:     typeof d.temp     === 'number' ? +d.temp.toFixed(1)     : (p?.temp     ?? simSensors.temp),
-              humidity: typeof d.humidity === 'number' ? Math.round(d.humidity) : (p?.humidity ?? simSensors.humidity),
-              soil:  p?.soil  ?? simSensors.soil,
-            }));
-            setSensorsReal(true);
-          }
+      fetch(`${API_URL}/sensors/data`, { headers: authHeaders })
+        .then(r=>{
+          if (r.status === 401) { handleLogout(); return null; }
+          return r.ok ? r.json() : null;
+        })
+        .then(records=>{
+          if (stopped || !Array.isArray(records) || records.length === 0) return;
+          const latest = records[0];
+          setRealSensors({
+            temp:     typeof latest.temperatureAir === 'number' ? +latest.temperatureAir.toFixed(1) : simSensors.temp,
+            humidity: typeof latest.humiditeAir    === 'number' ? Math.round(latest.humiditeAir)    : simSensors.humidity,
+            soil:     typeof latest.humiditeSol    === 'number' ? Math.round(latest.humiditeSol)    : simSensors.soil,
+          });
+          setSensorsReal(true);
         })
         .catch(()=>{});
     pull();
     const id = setInterval(pull, 10000);
-    return ()=>clearInterval(id);
-  },[esp32Connected, esp32Ip]);
+    return ()=>{ stopped = true; clearInterval(id); };
+  },[authToken]);
   const sensors = realSensors || simSensors;
 
   useEffect(()=>{ const id=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(id); },[]);
