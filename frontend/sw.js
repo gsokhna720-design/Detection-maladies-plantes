@@ -37,6 +37,15 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Le backend (API PlantAI, ESP32-CAM, etc.) tourne sur une autre origine
+  // (autre port) que le frontend qui sert ce Service Worker. Ces requêtes ne
+  // doivent JAMAIS passer par le cache applicatif — capteurs, historique,
+  // images capturées, etc. doivent toujours refléter l'état réel du serveur.
+  // On laisse le navigateur les gérer nativement, sans interception.
+  if (new URL(event.request.url).origin !== self.location.origin) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then(
       (cached) => cached || fetch(event.request).catch(() => cached)

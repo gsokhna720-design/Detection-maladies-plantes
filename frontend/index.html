@@ -3358,7 +3358,7 @@ function App() {
     if (!authToken) { setRealSensors(null); setSensorsReal(false); return; }
     let stopped = false;
     const pull = () =>
-      fetch(`${API_URL}/sensors/data`, { headers: authHeaders })
+      fetch(`${API_URL}/sensors/data?_=${Date.now()}`, { headers: authHeaders, cache: 'no-store' })
         .then(r=>{
           if (r.status === 401) { handleLogout(); return null; }
           return r.ok ? r.json() : null;

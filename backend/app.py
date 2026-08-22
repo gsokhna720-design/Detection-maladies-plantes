@@ -14,7 +14,7 @@ import requests as http_requests
 from bson import ObjectId
 from bson.errors import InvalidId
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -412,8 +412,19 @@ def esp32_capture(
         if 'image' not in r.headers.get('Content-Type', ''):
             raise HTTPException(status_code=502, detail="L'ESP32 n'a pas renvoyé une image valide")
 
+        # Vérifie que le JPEG est structurellement complet (marqueurs SOI/EOI) —
+        # un WiFi instable peut couper le transfert en cours de route ; requests
+        # ne lève alors pas toujours d'erreur, et un JPEG tronqué se decode en
+        # partie côté PIL/CNN mais s'affiche noir/vide côté navigateur.
+        content = r.content
+        if len(content) < 1000 or not content.startswith(b'\xff\xd8') or not content.endswith(b'\xff\xd9'):
+            raise HTTPException(
+                status_code=502,
+                detail="Image incomplète reçue depuis l'ESP32 (transfert interrompu, WiFi instable ?) — réessayez.",
+            )
+
         with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False, dir=UPLOAD_FOLDER) as f:
-            f.write(r.content)
+            f.write(content)
             tmp_path = f.name
 
         image_doc, img_path = _persist_image_file(tmp_path, f'ESP32-CAM_{ip}.jpg')
@@ -678,7 +689,10 @@ def simulate_sensor_data():
 
 
 @app.get('/sensors/data')
-def get_sensor_data(current_user: dict = Depends(require_role('maraicher'))):
+def get_sensor_data(response: Response, current_user: dict = Depends(require_role('maraicher'))):
+    # Toujours la mesure la plus récente en base — jamais de réponse mise en cache
+    # (dashboard interrogé toutes les 10s, doit refléter le dernier POST du DevKit).
+    response.headers['Cache-Control'] = 'no-store'
     col = get_capteurs_col()
     if col is None:
         return []
