@@ -3424,19 +3424,32 @@ function App() {
     loadHistory();
   }, [authToken]);
 
-  // ── Polling ESP32 — vérification toutes les 5 secondes ───────────────────
+  // ── Polling ESP32 — vérification toutes les 15 secondes ──────────────────
+  // Deux garde-fous ajoutés :
+  //  - `inFlight` : ne jamais lancer un test tant que le précédent n'a pas
+  //    répondu. Avec un intervalle plus court que le temps de réponse, les
+  //    requêtes s'empilaient et saturaient le serveur HTTP de l'ESP32, qui
+  //    finissait par refuser les connexions — d'où le badge qui passait
+  //    "injoignable" par intermittence juste après une connexion confirmée.
+  //  - intervalle porté à 15 s : un badge de présence n'a pas besoin d'être
+  //    rafraîchi 12 fois par minute, et chaque sondage est une requête réseau
+  //    de moins en concurrence avec la capture.
   useEffect(()=>{
     if (!esp32Ip) { setEsp32Connected(false); return; }
     let cancelled = false;
+    let inFlight  = false;
     const check = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const r = await fetch(`${API_URL}/api/esp32/status?ip=${encodeURIComponent(esp32Ip)}`);
         const d = await r.json();
         if (!cancelled) setEsp32Connected(!!d.connected);
       } catch { if (!cancelled) setEsp32Connected(false); }
+      finally { inFlight = false; }
     };
     check();
-    const id = setInterval(check, 5000);
+    const id = setInterval(check, 15000);
     return () => { cancelled = true; clearInterval(id); };
   }, [esp32Ip]);
   useEffect(()=>{

@@ -63,10 +63,15 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ── Configuration ESP32 ────────────────────────────────────────────────────────
 ESP32_DEFAULT_IP      = os.getenv('ESP32_IP', '')
-ESP32_CONNECT_TIMEOUT = int(os.getenv('ESP32_CONNECT_TIMEOUT', '8'))
-# La capture (déclenchement + exposition + envoi JPEG) peut prendre plus de temps
-# que le simple test de connexion, notamment en WiFi faible — délai plus large.
-ESP32_CAPTURE_TIMEOUT = int(os.getenv('ESP32_CAPTURE_TIMEOUT', '20'))
+# Test de connexion : interroge /status sur l'ESP32 (petit JSON, pas de photo).
+# Une réponse qui met plus de 4 s à venir signale de toute façon une liaison
+# inutilisable — inutile d'attendre plus longtemps avant d'afficher "déconnecté".
+ESP32_CONNECT_TIMEOUT = int(os.getenv('ESP32_CONNECT_TIMEOUT', '4'))
+# La capture (déclenchement + exposition + envoi JPEG) reste plus lourde que le
+# test de connexion. En QVGA le JPEG fait quelques dizaines de Ko et la capture
+# dure ~1 s : 12 s laissent une marge très large, tout en évitant de faire
+# patienter un jury 20 s devant un ESP32 qui ne répondra pas.
+ESP32_CAPTURE_TIMEOUT = int(os.getenv('ESP32_CAPTURE_TIMEOUT', '12'))
 
 SENSOR_LINK_WINDOW_SECONDS = 120
 
@@ -344,13 +349,38 @@ def esp32_status(ip: str = Query(default=None)):
         return {'connected': False, 'ip': None, 'message': 'Adresse IP ESP32 non configurée'}
 
     capture_url = f'http://{ip}/capture'
+
+    # On interroge /status (petit JSON) et JAMAIS /capture.
+    #
+    # Ce test de connexion est appelé en boucle par le tableau de bord. Tant
+    # qu'il tapait sur /capture, chaque vérification déclenchait une capture
+    # photo complète sur l'ESP32 : le serveur HTTP embarqué est mono-thread et
+    # ne dispose que d'un ou deux frame buffers, il restait donc occupé à
+    # photographier en permanence. Deux conséquences directes :
+    #   - la vraie capture demandée par l'utilisateur devait attendre la fin
+    #     des sondages en cours avant d'être servie (d'où la lenteur) ;
+    #   - la connexion était ouverte puis refermée (stream=True + close())
+    #     alors que l'ESP32 était en train d'écrire l'image, ce qui laissait
+    #     des sockets à moitié fermés jusqu'à saturation de la table : la
+    #     caméra se mettait alors à refuser les connexions par intermittence,
+    #     y compris juste après un test réussi.
+    # /status répond en quelques millisecondes et ne touche pas au capteur.
     try:
-        r = http_requests.get(capture_url, timeout=ESP32_CONNECT_TIMEOUT, stream=True)
-        r.close()
+        r = http_requests.get(f'http://{ip}/status', timeout=ESP32_CONNECT_TIMEOUT)
         connected = r.status_code == 200
+
+        payload = {}
+        if connected:
+            try:
+                payload = r.json()
+            except ValueError:
+                payload = {}
+
         return {
             'connected':   connected,
             'ip':          ip,
+            'rssi':        payload.get('rssi'),
+            'framesize':   payload.get('framesize'),
             'stream_url':  f'http://{ip}:81/stream',
             'capture_url': capture_url,
             'message':     'ESP32-CAM connectée et opérationnelle' if connected else f'HTTP {r.status_code}',
